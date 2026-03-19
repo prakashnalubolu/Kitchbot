@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from langchain_openai import ChatOpenAI; print\\(''langchain_openai import OK''\\)\")",
+      "Bash(python -c \"from agents.kitchen_agent import chat; print\\(''kitchen_agent OK''\\)\")",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

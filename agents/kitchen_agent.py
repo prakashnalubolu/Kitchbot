@@ -5,7 +5,7 @@ import os
 from typing import List
 
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_core.prompts import PromptTemplate
 from langchain.memory import ConversationSummaryBufferMemory
@@ -89,10 +89,10 @@ assert "get_shopping_list" in _loaded, "get_shopping_list not loaded"
 # LLM
 # ────────────────────────────────────────────────────────────────────────────
 load_dotenv()
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
     temperature=0.2,
-    google_api_key=os.getenv("GEMINI_API_KEY"),
+    api_key=os.getenv("OPENAI_API_KEY"),
 )
 
 # ────────────────────────────────────────────────────────────────────────────

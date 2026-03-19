@@ -1,12 +1,11 @@
-# core packages
+# core packages — must stay on 0.3.x (1.x is a full rewrite, breaks create_react_agent)
 langchain==0.3.25
-langchain-core==0.3.64    
+langchain-core==0.3.64
 langgraph==0.4.8
 
-# Google Gemini integration (new SDK)
-langchain_google_genai==2.1.5
-google-ai-generativelanguage==0.6.18
-google-genai>=1.20.0           # replaces “google-generativeai”
+# OpenAI integration
+langchain-openai==0.2.14
+openai>=1.0.0
 
 # tooling
 pytest~=8.0

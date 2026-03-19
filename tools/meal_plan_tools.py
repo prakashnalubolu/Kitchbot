@@ -30,20 +30,13 @@ PLAN_DIR = os.path.join(ROOT_DIR, "plans")
 os.makedirs(PLAN_DIR, exist_ok=True)
 
 ##############################################################################
-# Prefer KitchenAgent; fallback to ManagerAgent if present
+# KitchenAgent reference (lazy import to avoid circular imports)
 ##############################################################################
 _kitchen_chat = None
-_manager_agent_chat = None
 try:
-    from agents.kitchen_agent import chat as _kitchen_chat  # preferred
+    from agents.kitchen_agent import chat as _kitchen_chat
 except Exception:
     _kitchen_chat = None
-
-try:
-    from agents import manager_agent as _manager_agent_mod  # legacy fallback
-    _manager_agent_chat = _manager_agent_mod.chat
-except Exception:
-    _manager_agent_chat = None
 
 # Default planning mode if not set by UI
 DEFAULT_MODE = "pantry-first"   # or "user-choice"
@@ -194,10 +187,8 @@ def call_manager(query: Dict[str, Any] | str | None = None) -> str:
 
     if _kitchen_chat is not None:
         return _kitchen_chat(prompt)
-    if _manager_agent_chat is not None:
-        return _manager_agent_chat(prompt)
 
-    return ("Error: no routing agent available (KitchenAgent/ManagerAgent not found). "
+    return ("Error: KitchenAgent not available. "
             "You can still use cuisine_tools.find_recipes_by_items directly.")
 
 from tools import pantry_tools as _pt  
