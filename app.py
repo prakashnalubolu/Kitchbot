@@ -500,27 +500,76 @@ with tab_pantry:
 
         # ── Remove item ───────────────────────────────────────────────────────
         with st.expander("➖  Remove item"):
-            with st.form("pantry_remove_form", clear_on_submit=True):
-                rem_item = st.text_input("Item name", placeholder="e.g. egg, tomato…",
-                                         key="rem_item")
-                r1, r2, r3 = st.columns([1.2, 1, 1])
-                rem_qty  = r1.number_input("Qty (0 = remove all)", min_value=0.0, value=0.0,
-                                           step=0.5, key="rem_qty")
-                rem_unit = r2.selectbox("Unit", ["count", "g", "ml"], key="rem_unit")
-                rem_sub  = r3.form_submit_button("Remove", type="primary",
-                                                  use_container_width=True)
-            if rem_sub:
+            rem_item = st.text_input("Item name", placeholder="e.g. egg, ground chicken…",
+                                     key="rem_item")
+
+            # Auto-detect unit(s) this item is stored in
+            _stored_units: List[str] = []
+            if rem_item.strip():
+                ok_p, p_data = _load_json_ok(PANTRY_PATH)
+                if ok_p and isinstance(p_data, dict):
+                    _item_l = rem_item.strip().lower()
+                    for k in p_data:
+                        _base = k.split("(")[0].strip().lower()
+                        if _item_l in _base or _base in _item_l:
+                            _unit_k = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
+                            if _unit_k not in _stored_units:
+                                _stored_units.append(_unit_k)
+
+            _unit_opts = ["count", "g", "ml"]
+            _unit_labels = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
+            _default_idx = _unit_opts.index(_stored_units[0]) if _stored_units and _stored_units[0] in _unit_opts else 0
+
+            r1, r2 = st.columns([1.5, 1])
+            rem_qty  = r1.number_input("Quantity to remove", min_value=0.5, value=1.0,
+                                       step=0.5, key="rem_qty")
+            rem_unit = r2.selectbox("Unit", _unit_opts, index=_default_idx, key="rem_unit")
+
+            # Friendly unit-mismatch warning
+            if rem_item.strip() and _stored_units and rem_unit not in _stored_units:
+                _expected_label = _unit_labels.get(_stored_units[0], _stored_units[0])
+                st.warning(
+                    f"**{rem_item.strip().title()}** is stored in **{_expected_label}** "
+                    f"in your pantry. Please select that unit."
+                )
+
+            btn1, btn2 = st.columns(2)
+            do_rem_qty = btn1.button("➖  Remove quantity", type="primary",
+                                     use_container_width=True, key="do_rem_qty")
+            do_rem_all = btn2.button("🗑️  Remove all", use_container_width=True,
+                                     key="do_rem_all")
+
+            if do_rem_qty:
                 if not rem_item.strip():
                     st.warning("Enter an item name.")
+                elif _stored_units and rem_unit not in _stored_units:
+                    _expected_label = _unit_labels.get(_stored_units[0], _stored_units[0])
+                    st.error(f"Please select **{_expected_label}** to match how this item is stored.")
                 else:
-                    payload_rem: Dict[str, Any] = {"item": rem_item.strip().lower()}
-                    if rem_qty > 0:
-                        payload_rem["quantity"] = max(1, round(rem_qty))
-                        payload_rem["unit"] = rem_unit
                     with st.spinner("Removing…"):
                         try:
-                            result = _tool_remove.invoke(json.dumps(payload_rem))
+                            result = _tool_remove.invoke(json.dumps({
+                                "item": rem_item.strip().lower(),
+                                "quantity": max(1, round(rem_qty)),
+                                "unit": rem_unit,
+                            }))
                             st.success(f"✓ {result}")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+            if do_rem_all:
+                if not rem_item.strip():
+                    st.warning("Enter an item name.")
+                elif not _stored_units:
+                    st.warning(f"**{rem_item.strip().title()}** not found in your pantry.")
+                else:
+                    with st.spinner("Removing all…"):
+                        try:
+                            _item_l = rem_item.strip().lower()
+                            for _u in _stored_units:
+                                # omit "quantity" key → tool removes entire entry
+                                _tool_remove.invoke(json.dumps({"item": _item_l, "unit": _u}))
+                            st.success(f"✓ Removed all **{_item_l}** from your pantry.")
                         except Exception as e:
                             st.error(f"Error: {e}")
 
