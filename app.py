@@ -476,25 +476,69 @@ with tab_pantry:
 
         # ── Quick Add ─────────────────────────────────────────────────────────
         with st.expander("➕  Add item", expanded=True):
-            with st.form("pantry_add_form", clear_on_submit=True):
-                item_name = st.text_input("Item name", placeholder="e.g. chicken, rice, milk…")
-                a1, a2 = st.columns(2)
-                qty  = a1.number_input("Quantity", min_value=0.5, value=1.0, step=0.5)
-                unit = a2.selectbox("Unit", ["count", "g", "ml"])
-                submitted = st.form_submit_button("Add to Pantry", type="primary",
-                                                  use_container_width=True)
-            if submitted:
-                if not item_name.strip():
+            _add_key = ss.get("_add_form_key", 0)
+            add_item = st.text_input("Item name", placeholder="e.g. chicken, rice, milk…",
+                                     key=f"add_item_{_add_key}")
+
+            # Detect existing unit(s) for this item in the pantry
+            _add_stored: List[str] = []
+            _add_has_conv: bool = False
+            if add_item.strip():
+                ok_p, p_data = _load_json_ok(PANTRY_PATH)
+                if ok_p and isinstance(p_data, dict):
+                    _ai = add_item.strip().lower()
+                    for k in p_data:
+                        _base = k.split("(")[0].strip().lower()
+                        if _ai in _base or _base in _ai:
+                            _uk = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
+                            if _uk not in _add_stored:
+                                _add_stored.append(_uk)
+
+            _unit_opts = ["count", "g", "ml"]
+            _unit_labels_add = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
+            _add_default = _unit_opts.index(_add_stored[0]) if _add_stored and _add_stored[0] in _unit_opts else 0
+
+            a1, a2 = st.columns(2)
+            qty  = a1.number_input("Quantity", min_value=0.5, value=1.0, step=0.5,
+                                   key=f"add_qty_{_add_key}")
+            unit = a2.selectbox("Unit", _unit_opts, index=_add_default,
+                                key=f"add_unit_{_add_key}")
+
+            # Check if alt_units handles this conversion automatically
+            if add_item.strip() and _add_stored and unit not in _add_stored:
+                _item_key = add_item.strip().lower()
+                _has_mirror = _item_key in ALT_HINTS and (
+                    ALT_HINTS[_item_key].get("count_to_g") or ALT_HINTS[_item_key].get("count_to_ml")
+                )
+                if _has_mirror:
+                    st.info(
+                        f"**{add_item.strip().title()}** is stored in "
+                        f"**{_unit_labels_add.get(_add_stored[0], _add_stored[0])}**. "
+                        f"Your {unit} quantity will be automatically converted — no duplicate entry."
+                    )
+                else:
+                    st.warning(
+                        f"**{add_item.strip().title()}** is already stored in "
+                        f"**{_unit_labels_add.get(_add_stored[0], _add_stored[0])}**. "
+                        f"Adding in **{unit}** will create a separate entry. "
+                        f"Consider using **{_unit_labels_add.get(_add_stored[0], _add_stored[0])}** instead."
+                    )
+
+            if st.button("Add to Pantry", type="primary", use_container_width=True,
+                         key=f"add_btn_{_add_key}"):
+                if not add_item.strip():
                     st.warning("Please enter an item name.")
                 else:
                     with st.spinner("Adding…"):
                         try:
                             result = _tool_add.invoke(json.dumps({
-                                "item": item_name.strip().lower(),
+                                "item": add_item.strip().lower(),
                                 "quantity": max(1, round(qty)),
                                 "unit": unit,
                             }))
                             st.success(f"✓ {result}")
+                            ss["_add_form_key"] = _add_key + 1  # clear inputs
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
 
@@ -595,6 +639,38 @@ with tab_pantry:
                                 "unit": upd_unit,
                             }))
                             st.success(f"✓ {result}")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+
+        # ── Fix duplicate unit entries ─────────────────────────────────────────
+        with st.expander("🔀  Fix duplicate unit entries"):
+            st.caption("Finds items stored under two different units and lets you keep one.")
+            ok_p, p_data = _load_json_ok(PANTRY_PATH)
+            _dupes: Dict[str, List[tuple]] = {}
+            if ok_p and isinstance(p_data, dict):
+                for k, v in p_data.items():
+                    _base = k.split("(")[0].strip().lower()
+                    _dupes.setdefault(_base, []).append((k, v))
+            _dupes = {b: entries for b, entries in _dupes.items() if len(entries) > 1}
+            if not _dupes:
+                st.success("No duplicate entries found — pantry looks clean!")
+            else:
+                for _base, _entries in _dupes.items():
+                    st.markdown(f"**{_base.title()}** is stored under {len(_entries)} units:")
+                    for k, v in _entries:
+                        st.markdown(f"  - `{k}`: {v}")
+                    _keep_opts = [e[0] for e in _entries]
+                    _keep = st.selectbox(f"Keep which entry for {_base}?", _keep_opts,
+                                         key=f"dedup_{_base}")
+                    if st.button(f"Merge — keep {_keep}", key=f"dedup_btn_{_base}",
+                                 use_container_width=True):
+                        try:
+                            for k, _ in _entries:
+                                if k != _keep:
+                                    _uk = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
+                                    _tool_remove.invoke(json.dumps({"item": _base, "unit": _uk}))
+                            st.success(f"✓ Kept `{_keep}`, removed other entries for {_base}.")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
 

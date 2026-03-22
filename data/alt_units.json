@@ -1,53 +1,77 @@
 {
   "rules": [
-    { "item": "spinach",      "from": "count", "to": "g",  "factor": 125,    "round": 10 },
-    { "item": "spinach",      "from": "g",     "to": "count", "factor": 0.008, "round": 1  },
+    { "item": "spinach",        "from": "count", "to": "g",     "factor": 125,    "round": 10 },
+    { "item": "spinach",        "from": "g",     "to": "count", "factor": 0.008,  "round": 1  },
 
-    { "item": "chili",        "from": "count", "to": "g",  "factor": 5,      "round": 1  },
-    { "item": "chili",        "from": "g",     "to": "count", "factor": 0.2,   "round": 1  },
-    { "item": "dried chili",  "from": "count", "to": "g",  "factor": 5,      "round": 1  },
-    { "item": "dried chili",  "from": "g",     "to": "count", "factor": 0.2,   "round": 1  },
+    { "item": "chili",          "from": "count", "to": "g",     "factor": 5,      "round": 1  },
+    { "item": "chili",          "from": "g",     "to": "count", "factor": 0.2,    "round": 1  },
+    { "item": "dried chilli",   "from": "count", "to": "g",     "factor": 5,      "round": 1  },
+    { "item": "dried chilli",   "from": "g",     "to": "count", "factor": 0.2,    "round": 1  },
 
-    { "item": "garlic",       "from": "count", "to": "g",  "factor": 5,      "round": 1  },
-    { "item": "garlic",       "from": "g",     "to": "count", "factor": 0.2,   "round": 1  },
+    { "item": "garlic",         "from": "count", "to": "g",     "factor": 5,      "round": 1  },
+    { "item": "garlic",         "from": "g",     "to": "count", "factor": 0.2,    "round": 1  },
 
-    { "item": "onion",        "from": "count", "to": "g",  "factor": 100,    "round": 10 },
-    { "item": "onion",        "from": "g",     "to": "count", "factor": 0.01,  "round": 1  },
+    { "item": "onion",          "from": "count", "to": "g",     "factor": 100,    "round": 10 },
+    { "item": "onion",          "from": "g",     "to": "count", "factor": 0.01,   "round": 1  },
 
-    { "item": "tomato",       "from": "count", "to": "g",  "factor": 100,    "round": 10 },
-    { "item": "tomato",       "from": "g",     "to": "count", "factor": 0.01,  "round": 1  },
+    { "item": "tomato",         "from": "count", "to": "g",     "factor": 100,    "round": 10 },
+    { "item": "tomato",         "from": "g",     "to": "count", "factor": 0.01,   "round": 1  },
 
-    { "item": "bell pepper",  "from": "count", "to": "g",  "factor": 150,    "round": 10 },
-    { "item": "bell pepper",  "from": "g",     "to": "count", "factor": 0.0067, "round": 1  },
+    { "item": "bell pepper",    "from": "count", "to": "g",     "factor": 150,    "round": 10 },
+    { "item": "bell pepper",    "from": "g",     "to": "count", "factor": 0.0067, "round": 1  },
 
-    { "item": "eggplant",     "from": "count", "to": "g",  "factor": 300,    "round": 10 },
-    { "item": "eggplant",     "from": "g",     "to": "count", "factor": 0.0033, "round": 1  },
+    { "item": "eggplant",       "from": "count", "to": "g",     "factor": 300,    "round": 10 },
+    { "item": "eggplant",       "from": "g",     "to": "count", "factor": 0.0033, "round": 1  },
 
-    { "item": "spring onion", "from": "count", "to": "g",  "factor": 15,     "round": 5  },
-    { "item": "spring onion", "from": "g",     "to": "count", "factor": 0.0667,"round": 1  },
+    { "item": "spring onion",   "from": "count", "to": "g",     "factor": 15,     "round": 5  },
+    { "item": "spring onion",   "from": "g",     "to": "count", "factor": 0.0667, "round": 1  },
 
-    { "item": "potato",       "from": "count", "to": "g",  "factor": 150,    "round": 10 },
-    { "item": "potato",       "from": "g",     "to": "count", "factor": 0.0067, "round": 1  },
+    { "item": "potato",         "from": "count", "to": "g",     "factor": 150,    "round": 10 },
+    { "item": "potato",         "from": "g",     "to": "count", "factor": 0.0067, "round": 1  },
 
-    { "item": "thai basil",   "from": "count", "to": "g",  "factor": 5,      "round": 1  },
-    { "item": "thai basil",   "from": "g",     "to": "count", "factor": 0.2,   "round": 1  },
+    { "item": "carrot",         "from": "count", "to": "g",     "factor": 80,     "round": 10 },
+    { "item": "carrot",         "from": "g",     "to": "count", "factor": 0.0125, "round": 1  },
 
-    { "item": "milk",         "from": "ml",    "to": "g",  "factor": 1,      "round": 10 },
-    { "item": "milk",         "from": "g",     "to": "ml", "factor": 1,      "round": 10 },
+    { "item": "lemon",          "from": "count", "to": "g",     "factor": 60,     "round": 10 },
+    { "item": "lemon",          "from": "g",     "to": "count", "factor": 0.0167, "round": 1  },
 
-    { "item": "coconut milk", "from": "ml",    "to": "g",  "factor": 1,      "round": 10 },
-    { "item": "coconut milk", "from": "g",     "to": "ml", "factor": 1,      "round": 10 }
+    { "item": "lime",           "from": "count", "to": "g",     "factor": 50,     "round": 10 },
+    { "item": "lime",           "from": "g",     "to": "count", "factor": 0.02,   "round": 1  },
+
+    { "item": "egg",            "from": "count", "to": "g",     "factor": 55,     "round": 5  },
+    { "item": "egg",            "from": "g",     "to": "count", "factor": 0.018,  "round": 1  },
+
+    { "item": "lemon grass",    "from": "count", "to": "g",     "factor": 20,     "round": 5  },
+    { "item": "lemon grass",    "from": "g",     "to": "count", "factor": 0.05,   "round": 1  },
+
+    { "item": "mushroom",       "from": "count", "to": "g",     "factor": 15,     "round": 5  },
+    { "item": "mushroom",       "from": "g",     "to": "count", "factor": 0.067,  "round": 1  },
+
+    { "item": "thai basil",     "from": "count", "to": "g",     "factor": 5,      "round": 1  },
+    { "item": "thai basil",     "from": "g",     "to": "count", "factor": 0.2,    "round": 1  },
+
+    { "item": "milk",           "from": "ml",    "to": "g",     "factor": 1,      "round": 10 },
+    { "item": "milk",           "from": "g",     "to": "ml",    "factor": 1,      "round": 10 },
+
+    { "item": "coconut milk",   "from": "ml",    "to": "g",     "factor": 1,      "round": 10 },
+    { "item": "coconut milk",   "from": "g",     "to": "ml",    "factor": 1,      "round": 10 }
   ],
   "labels": {
-    "spinach":      { "count_label": "bunch" },
-    "garlic":       { "count_label": "clove" },
-    "chili":        { "count_label": "count" },
-    "dried chili":  { "count_label": "count" },
-    "onion":        { "count_label": "onion" },
-    "tomato":       { "count_label": "count" },
-    "bell pepper":  { "count_label": "pepper" },
-    "eggplant":     { "count_label": "eggplant" },
-    "spring onion": { "count_label": "stalk" },
-    "potato":       { "count_label": "potato" }
+    "spinach":      { "count_label": "bunch"     },
+    "garlic":       { "count_label": "clove"     },
+    "chili":        { "count_label": "chili"     },
+    "dried chilli": { "count_label": "chilli"    },
+    "onion":        { "count_label": "onion"     },
+    "tomato":       { "count_label": "tomato"    },
+    "bell pepper":  { "count_label": "pepper"    },
+    "eggplant":     { "count_label": "eggplant"  },
+    "spring onion": { "count_label": "stalk"     },
+    "potato":       { "count_label": "potato"    },
+    "carrot":       { "count_label": "carrot"    },
+    "lemon":        { "count_label": "lemon"     },
+    "lime":         { "count_label": "lime"      },
+    "egg":          { "count_label": "egg"       },
+    "lemon grass":  { "count_label": "stalk"     },
+    "mushroom":     { "count_label": "mushroom"  }
   }
 }
