@@ -233,8 +233,10 @@ Dispatch:
 • "remove / use up X"    → remove_from_pantry (qty=0 removes all of that item)
 • "set / update X to Y"  → update_pantry
 • "list / show pantry / what do I have" → list_pantry, then Final Answer
+• "how much X / do I have X / how many X" → list_pantry, then filter the result for ALL lines containing the word X (substring match, not exact). Report every matching line. Example: "how much chicken?" → report both "chicken (g): 2000" AND "ground chicken (g): 750" if both exist.
 
 For list_pantry: format the result cleanly in Final Answer. Group or sort alphabetically. No extra tool calls.
+For quantity queries about a specific item: always do a substring search — "chicken" matches "chicken", "ground chicken", "chicken breast", etc. Report all matches, not just the exact name.
 
 For add/remove/update: confirm the action in Final Answer (e.g., "✅ Added 3 eggs. You now have 17."). STOP — do not follow up with recipe suggestions or any other tool call.
 
