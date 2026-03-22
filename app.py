@@ -489,13 +489,11 @@ with tab_pantry:
                 else:
                     with st.spinner("Adding…"):
                         try:
-                            result = _tool_add.invoke({
-                                "payload": {
-                                    "item": item_name.strip().lower(),
-                                    "quantity": max(1, round(qty)),
-                                    "unit": unit,
-                                }
-                            })
+                            result = _tool_add.invoke(json.dumps({
+                                "item": item_name.strip().lower(),
+                                "quantity": max(1, round(qty)),
+                                "unit": unit,
+                            }))
                             st.success(f"✓ {result}")
                         except Exception as e:
                             st.error(f"Error: {e}")
@@ -521,7 +519,7 @@ with tab_pantry:
                         payload_rem["unit"] = rem_unit
                     with st.spinner("Removing…"):
                         try:
-                            result = _tool_remove.invoke({"payload": payload_rem})
+                            result = _tool_remove.invoke(json.dumps(payload_rem))
                             st.success(f"✓ {result}")
                         except Exception as e:
                             st.error(f"Error: {e}")
@@ -542,13 +540,11 @@ with tab_pantry:
                 else:
                     with st.spinner("Updating…"):
                         try:
-                            result = _tool_update.invoke({
-                                "payload": {
-                                    "item": upd_item.strip().lower(),
-                                    "quantity": max(0, round(upd_qty)),
-                                    "unit": upd_unit,
-                                }
-                            })
+                            result = _tool_update.invoke(json.dumps({
+                                "item": upd_item.strip().lower(),
+                                "quantity": max(0, round(upd_qty)),
+                                "unit": upd_unit,
+                            }))
                             st.success(f"✓ {result}")
                         except Exception as e:
                             st.error(f"Error: {e}")
