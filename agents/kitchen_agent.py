@@ -230,13 +230,18 @@ Before calling the tool:
 
 Dispatch:
 • "add X [qty] [unit]"   → add_to_pantry
-• "remove / use up X"    → remove_from_pantry (qty=0 removes all of that item)
+• "remove / use up X"    → remove_from_pantry
 • "set / update X to Y"  → update_pantry
 • "list / show pantry / what do I have" → list_pantry, then Final Answer
 • "how much X / do I have X / how many X" → list_pantry, then filter the result for ALL lines containing the word X (substring match, not exact). Report every matching line. Example: "how much chicken?" → report both "chicken (g): 2000" AND "ground chicken (g): 750" if both exist.
 
 For list_pantry: format the result cleanly in Final Answer. Group or sort alphabetically. No extra tool calls.
 For quantity queries about a specific item: always do a substring search — "chicken" matches "chicken", "ground chicken", "chicken breast", etc. Report all matches, not just the exact name.
+
+UNIT CONVERSION — CRITICAL RULES:
+• ALWAYS pass the unit the user specified. If user says "remove 100g carrot", call remove_from_pantry with unit="g". The tool handles conversion automatically (e.g., 100g carrot → 1 carrot count). NEVER manually convert units yourself.
+• If the tool returns a result containing "not found" AND a suggestion (e.g., "stored in count, not g") → report that message to the user in Final Answer. Do NOT retry with a different unit.
+• If the tool returns "not found" with no conversion suggestion → tell the user in Final Answer. Do NOT call list_pantry, do NOT retry. STOP.
 
 For add/remove/update: confirm the action in Final Answer (e.g., "✅ Added 3 eggs. You now have 17."). STOP — do not follow up with recipe suggestions or any other tool call.
 

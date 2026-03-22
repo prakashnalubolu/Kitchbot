@@ -69,6 +69,17 @@ def _round_to_step(value: float, step: Optional[int|float]) -> int:
         return int(round(value))
     return int(round(value / step) * step)
 
+def _convert_qty(item: str, qty: float, from_unit: str, to_unit: str) -> Optional[float]:
+    """Convert qty between units using alt_units rules. Returns None if no rule exists."""
+    for r in _ALT.get("rules", []):
+        if (_canon_item(r.get("item")) == _canon_item(item) and
+                _norm_unit(r.get("from")) == _norm_unit(from_unit) and
+                _norm_unit(r.get("to")) == _norm_unit(to_unit)):
+            result = qty * float(r.get("factor", 1))
+            result = _round_to_step(result, r.get("round"))
+            return max(1, result)
+    return None
+
 def _alt_transforms_for(item: str, unit_from: str) -> List[dict]:
     """All rules that match this item + from-unit."""
     item = _canon_item(item)
@@ -191,7 +202,26 @@ class _PantryDB:
         unit = _norm_unit(unit)
         k = _key(item, unit)
         if k not in self.items:
-            return f"⚠️ {item} ({unit}) not found."
+            # Try cross-unit: find which unit this item IS stored in, then convert
+            for other in ("count", "g", "ml"):
+                if other == unit:
+                    continue
+                other_key = _key(item, other)
+                if other_key in self.items:
+                    if qty is None:
+                        # "remove all" — just use the unit it's stored in
+                        return self.remove(item, None, other)
+                    converted = _convert_qty(item, float(qty), unit, other)
+                    if converted is not None:
+                        converted_int = int(converted)
+                        note = (f"({qty} {unit} ≈ {converted_int} {other} "
+                                f"based on unit conversion)")
+                        result = self.remove(item, converted_int, other)
+                        return f"{result} {note}"
+                    else:
+                        return (f"⚠️ {item.title()} is stored in {other}, not {unit}. "
+                                f"No conversion rule found. Please specify quantity in {other}.")
+            return f"⚠️ {item} not found in your pantry."
 
         if qty is None:
             # remove all -> compute delta = -current
