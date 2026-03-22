@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from tools.meal_plan_tools import DEFAULT_CONSTRAINTS as PLANNER_DEFAULTS
-from agents.kitchen_agent import chat as kitchen_chat
+from agents.kitchen_agent import chat as kitchen_chat, chat_memory as _agent_chat_memory
 from tools.meal_plan_tools import (
     memory as planner_memory,
     update_plan, cook_meal,
@@ -26,8 +26,13 @@ try:
 except Exception:
     slot_memory = None
 
-from tools.cuisine_tools import _load as cuisine_load
+from tools.cuisine_tools import _load as _cuisine_load_raw
 from tools.cuisine_tools import diet_ok as cuisine_diet_ok
+
+@st.cache_data(ttl=300)
+def cuisine_load():
+    """Cached wrapper around recipe JSON loader (refreshes every 5 min)."""
+    return _cuisine_load_raw()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config
@@ -210,6 +215,8 @@ ss.setdefault("cuisine_autofocus", "")
 ss.setdefault("show_shopping_list", False)
 ss.setdefault("pantry_filter", "")
 ss.setdefault("active_tab", 0)
+ss.setdefault("_thinking", False)
+ss.setdefault("_pending_prompt", "")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths & helpers
@@ -324,11 +331,34 @@ def _render_shopping_list() -> None:
         st.markdown('<div class="sl-empty">✅ Your pantry covers everything in the plan!</div>',
                     unsafe_allow_html=True)
         return
-    dairy_set  = {"milk","cream","yogurt","paneer","cheese","butter","ghee","egg","eggs"}
-    meat_set   = {"chicken","mutton","lamb","beef","pork","fish","prawn","shrimp","crab"}
-    veggie_set = {"spinach","tomato","onion","garlic","ginger","chili","pepper","potato",
-                  "carrot","peas","capsicum","coriander","lemon","lime","mint","celery",
-                  "broccoli","cauliflower","mushroom","cucumber","zucchini","eggplant"}
+    dairy_set  = {
+        "milk","cream","yogurt","curd","paneer","cheese","butter","ghee",
+        "egg","eggs","heavy cream","double cream","sour cream","condensed milk",
+        "evaporated milk","cream cheese","mozzarella","parmesan","ricotta",
+    }
+    meat_set   = {
+        "chicken","mutton","lamb","beef","pork","fish","prawn","shrimp","crab",
+        "tofu","tempeh","bacon","sausage","turkey","duck","squid","octopus",
+        "salmon","tuna","cod","tilapia","anchovy","sardine",
+    }
+    veggie_set = {
+        # alliums
+        "onion","spring onion","scallion","shallot","leek","garlic","ginger",
+        # nightshades
+        "tomato","pepper","capsicum","chili","chilli","eggplant","aubergine",
+        # leafy greens
+        "spinach","lettuce","kale","cabbage","bok choy","coriander","cilantro",
+        "parsley","basil","mint","curry leaf","curry leaves","methi","fenugreek",
+        # roots & tubers
+        "potato","sweet potato","carrot","beet","radish","turnip","yam",
+        # brassicas
+        "broccoli","cauliflower","brussels sprout",
+        # others
+        "mushroom","peas","corn","zucchini","squash","cucumber","celery",
+        "artichoke","asparagus","bean","lentil","chickpea",
+        # citrus
+        "lemon","lime","orange",
+    }
     produce, dairy_meat, dry_goods = [], [], []
     for d in deficits:
         item = d.get("item","")
@@ -340,9 +370,15 @@ def _render_shopping_list() -> None:
         if have > 0:
             label += f" *(have {have}, need {need})*"
         key = item.lower()
-        if key in dairy_set or key in meat_set: dairy_meat.append((item, label))
-        elif key in veggie_set:                  produce.append((item, label))
-        else:                                    dry_goods.append((item, label))
+        # check exact first, then keyword-contains for multi-word items
+        def _in_set(k, s):
+            return k in s or any(kw in k for kw in s)
+        if _in_set(key, dairy_set) or _in_set(key, meat_set):
+            dairy_meat.append((item, label))
+        elif _in_set(key, veggie_set):
+            produce.append((item, label))
+        else:
+            dry_goods.append((item, label))
     for section, items in [
         ("🥦  Produce & Fresh", produce),
         ("🥩  Dairy & Protein", dairy_meat),
@@ -443,7 +479,7 @@ with tab_pantry:
             with st.form("pantry_add_form", clear_on_submit=True):
                 item_name = st.text_input("Item name", placeholder="e.g. chicken, rice, milk…")
                 a1, a2 = st.columns(2)
-                qty  = a1.number_input("Quantity", min_value=1, value=1, step=1)
+                qty  = a1.number_input("Quantity", min_value=0.5, value=1.0, step=0.5)
                 unit = a2.selectbox("Unit", ["count", "g", "ml"])
                 submitted = st.form_submit_button("Add to Pantry", type="primary",
                                                   use_container_width=True)
@@ -456,7 +492,7 @@ with tab_pantry:
                             result = _tool_add.invoke({
                                 "payload": {
                                     "item": item_name.strip().lower(),
-                                    "quantity": int(qty),
+                                    "quantity": max(1, round(qty)),
                                     "unit": unit,
                                 }
                             })
@@ -470,8 +506,8 @@ with tab_pantry:
                 rem_item = st.text_input("Item name", placeholder="e.g. egg, tomato…",
                                          key="rem_item")
                 r1, r2, r3 = st.columns([1.2, 1, 1])
-                rem_qty  = r1.number_input("Qty (0 = remove all)", min_value=0, value=0,
-                                           step=1, key="rem_qty")
+                rem_qty  = r1.number_input("Qty (0 = remove all)", min_value=0.0, value=0.0,
+                                           step=0.5, key="rem_qty")
                 rem_unit = r2.selectbox("Unit", ["count", "g", "ml"], key="rem_unit")
                 rem_sub  = r3.form_submit_button("Remove", type="primary",
                                                   use_container_width=True)
@@ -481,7 +517,7 @@ with tab_pantry:
                 else:
                     payload_rem: Dict[str, Any] = {"item": rem_item.strip().lower()}
                     if rem_qty > 0:
-                        payload_rem["quantity"] = int(rem_qty)
+                        payload_rem["quantity"] = max(1, round(rem_qty))
                         payload_rem["unit"] = rem_unit
                     with st.spinner("Removing…"):
                         try:
@@ -495,8 +531,8 @@ with tab_pantry:
             with st.form("pantry_update_form", clear_on_submit=True):
                 upd_item = st.text_input("Item name", key="upd_item")
                 u1, u2, u3 = st.columns([1.2, 1, 1])
-                upd_qty  = u1.number_input("New quantity", min_value=0, value=1,
-                                           step=1, key="upd_qty")
+                upd_qty  = u1.number_input("New quantity", min_value=0.0, value=1.0,
+                                           step=0.5, key="upd_qty")
                 upd_unit = u2.selectbox("Unit", ["count", "g", "ml"], key="upd_unit")
                 upd_sub  = u3.form_submit_button("Update", type="primary",
                                                   use_container_width=True)
@@ -509,7 +545,7 @@ with tab_pantry:
                             result = _tool_update.invoke({
                                 "payload": {
                                     "item": upd_item.strip().lower(),
-                                    "quantity": int(upd_qty),
+                                    "quantity": max(0, round(upd_qty)),
                                     "unit": upd_unit,
                                 }
                             })
@@ -517,25 +553,19 @@ with tab_pantry:
                         except Exception as e:
                             st.error(f"Error: {e}")
 
-        # ── Reset button ───────────────────────────────────────────────────────
+        # ── Reset pantry ────────────────────────────────────────────────────────
         st.divider()
-        if st.button("↺  Reset chat & plan", use_container_width=True):
-            ss["messages_kitchen"].clear()
-            ss["events"].clear()
-            ss["focus_msg_idx"] = None
-            ss["cuisine_autofocus"] = ""
-            ss["show_shopping_list"] = False
+        if st.button("🗑️  Reset pantry", use_container_width=True):
+            import json as _json
+            with open(PANTRY_PATH, "w", encoding="utf-8") as _f:
+                _json.dump({}, _f)
+            # reload the in-memory DB too
             try:
-                planner_memory.memories.clear()
-                planner_memory.memories["constraints"] = dict(PLANNER_DEFAULTS)
+                from tools.pantry_tools import _db
+                _db._load()
             except Exception:
                 pass
-            try:
-                if slot_memory:
-                    slot_memory.memories.clear()
-            except Exception:
-                pass
-            st.success("Chat and plan cleared.")
+            st.success("Pantry cleared.")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -570,7 +600,7 @@ with tab_plan:
 
         s4, s5, s6 = st.columns(3)
         gen_cuisine  = s4.text_input("Cuisine", placeholder="any")
-        gen_diet     = s5.selectbox("Diet", ["Any", "vegetarian", "eggtarian", "non-veg"])
+        gen_diet     = s5.selectbox("Diet", ["Any", "veg", "eggtarian", "non-veg"])
         gen_max_time = s6.number_input("Max time (min)", 0, 240, 0, 15)
         gen_no_rpt   = st.checkbox("Avoid repeats", value=False)
 
@@ -771,6 +801,24 @@ with tab_plan:
                 picked = next(r for r in matches if r.get("name","").title() == pick)
                 st.markdown(_fmt_recipe_md(picked))
 
+        # ── Reset meal plan ────────────────────────────────────────────────────
+        st.divider()
+        if st.button("↺  Reset meal plan", use_container_width=True, key="reset_plan_btn"):
+            try:
+                planner_memory.memories.clear()
+                planner_memory.memories["constraints"] = dict(PLANNER_DEFAULTS)
+            except Exception:
+                pass
+            try:
+                if slot_memory:
+                    slot_memory.memories.clear()
+            except Exception:
+                pass
+            ss["cuisine_autofocus"] = ""
+            ss["show_shopping_list"] = False
+            st.success("Meal plan cleared.")
+            st.rerun()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # TAB 3 — CHAT
@@ -791,46 +839,66 @@ with tab_chat:
           </div>
         </div>""", unsafe_allow_html=True)
 
-        # Suggestion chips (clicking pre-fills the input via session state)
+        # Clickable suggestion chips — each fires the question immediately
         suggestions = [
             "What can I cook right now?",
-            "Generate a 3-day pantry-first plan",
+            "Plan 3 days of meals using what I have",
             "What's missing for Palak Paneer?",
             "Show me Indian vegetarian recipes",
             "Get my shopping list",
         ]
-        chip_html = '<div class="chips-row">' + "".join(
-            f'<span class="chip">{s}</span>' for s in suggestions
-        ) + '</div>'
-        st.markdown(chip_html, unsafe_allow_html=True)
-        st.caption("(Type your question below or click a suggestion above.)")
+        chip_cols = st.columns(len(suggestions))
+        for col, suggestion in zip(chip_cols, suggestions):
+            if col.button(suggestion, key=f"chip_{suggestion[:20]}", use_container_width=True):
+                ss["messages_kitchen"].append({"role": "user", "content": suggestion})
+                ss["events"].append({"label": label_user_turn(suggestion),
+                                     "msg_idx": len(ss["messages_kitchen"]) - 1})
+                ss["_thinking"] = True
+                ss["_pending_prompt"] = suggestion
+                st.rerun()
 
-    # ── Message history ────────────────────────────────────────────────────────
-    for i, msg in enumerate(msgs):
+    # ── Message history — always above the input bar
+    for msg in ss["messages_kitchen"]:
         role   = msg["role"]
         avatar = "🙂" if role == "user" else "🍳"
         with st.chat_message(role, avatar=avatar):
             st.markdown(msg["content"])
 
-    # ── Chat input (pins to bottom of tab) ────────────────────────────────────
+    # ── Thinking indicator — runs IN the history area, above the input bar
+    if ss.get("_thinking") and ss.get("_pending_prompt"):
+        with st.chat_message("assistant", avatar="🍳"):
+            with st.spinner("KitchBot is thinking…"):
+                try:
+                    reply = kitchen_chat(ss["_pending_prompt"])
+                except Exception as err:
+                    reply = f"Sorry, something went wrong: {err}"
+            if isinstance(reply, dict) and "output" in reply:
+                reply = reply["output"]
+            ss["messages_kitchen"].append({"role": "assistant", "content": str(reply)})
+            ss["_thinking"] = False
+            ss["_pending_prompt"] = ""
+            st.rerun()
+
+    # ── Reset chat ─────────────────────────────────────────────────────────────
+    if ss["messages_kitchen"]:
+        if st.button("↺  Reset chat", key="reset_chat_btn"):
+            ss["messages_kitchen"].clear()
+            ss["events"].clear()
+            ss["focus_msg_idx"] = None
+            ss["_thinking"] = False
+            ss["_pending_prompt"] = ""
+            try:
+                _agent_chat_memory.clear()
+            except Exception:
+                pass
+            st.rerun()
+
+    # ── Chat input — always at the bottom
     prompt = st.chat_input("Ask KitchBot anything — pantry, recipes, meal plans…")
     if prompt:
         ss["messages_kitchen"].append({"role": "user", "content": prompt})
         ss["events"].append({"label": label_user_turn(prompt),
                               "msg_idx": len(ss["messages_kitchen"]) - 1})
-
-        with st.chat_message("user", avatar="🙂"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant", avatar="🍳"):
-            with st.spinner("KitchBot is thinking…"):
-                try:
-                    reply = kitchen_chat(prompt)
-                except Exception as err:
-                    reply = f"Sorry, something went wrong: {err}"
-            if isinstance(reply, dict) and "output" in reply:
-                reply = reply["output"]
-            reply = str(reply)
-            st.markdown(reply)
-
-        ss["messages_kitchen"].append({"role": "assistant", "content": reply})
+        ss["_thinking"] = True
+        ss["_pending_prompt"] = prompt
+        st.rerun()

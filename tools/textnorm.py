@@ -59,7 +59,6 @@ def _singular_fallback(word: str) -> str:
 # Spelling/orthography folds (tiny, surgical; NOT a big alias map)
 # ─────────────────────────────────────────────────────────────────────────────
 # Normalize chili/chile/chilli/chillies → chili
-STATE_ADJS = {"cooked","boiled","steamed","raw","dried","fresh","smoked","roasted","grilled","fried","baked"}
 CHILI_ALIASES = {
     "chilli":"chili", "chillies":"chili", "chilly":"chili", "chilles":"chili",
     "chile":"chili", "chiles":"chili"

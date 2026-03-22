@@ -21,32 +21,6 @@ PANTRY_JSON_PATH = os.path.join(ROOT_DIR, "data", "pantry.json")
 
 # ----------------------------------------------------------------- Helpers
 
-_name_unit_re = re.compile(r"^\s*(.*?)\s*\(([^)]+)\)\s*$")
-
-def _split_pantry_key(key: str) -> Tuple[str, str]:
-    """'tomato (count)' -> ('tomato', 'count')  |  'rice (g)' -> ('rice','g')"""
-    m = _name_unit_re.match(key)
-    if not m:
-        base = key.split("(")[0]
-        return base.strip().lower(), "count"
-    return m.group(1).strip().lower(), m.group(2).strip().lower()
-
-def _normalize_unit(u: Optional[str]) -> str:
-    if not u:
-        return "count"
-    u = u.strip().lower()
-    if u in ("kg", "kilogram", "kilograms"):
-        return "g"
-    if u in ("g", "gram", "grams", "gms"):
-        return "g"
-    if u in ("l", "litre", "liter", "liters", "litres"):
-        return "ml"
-    if u in ("ml", "millilitre", "milliliter", "milliliters", "millilitres"):
-        return "ml"
-    if u in ("count", "pcs", "piece", "pieces"):
-        return "count"
-    return u  # leave as-is for any custom units
-
 def _normalise(name: str) -> str:
     """Lower-case and strip very simple plurals (onions → onion)."""
     n = name.strip().lower()
@@ -161,6 +135,95 @@ def _split_pantry_key(key: str) -> tuple[str, str]:
         base = key.split("(")[0]
         return base.strip(), "count"
     return m.group(1).strip(), _normalize_unit(m.group(2))
+# Grams-per-count for common whole ingredients used in recipes.
+# Used when recipe wants grams but pantry has count (or vice versa).
+_G_PER_COUNT: dict[str, float] = {
+    "garlic": 5.0,      # one clove ≈ 5 g
+    "clove": 5.0,
+    "onion": 100.0,     # medium onion ≈ 100 g
+    "tomato": 100.0,    # medium tomato ≈ 100 g
+    "chili": 5.0,       # one chili ≈ 5 g
+    "chilli": 5.0,
+    "egg": 50.0,        # one egg ≈ 50 g
+    "lemon": 60.0,
+    "lime": 60.0,
+    "potato": 150.0,    # medium potato ≈ 150 g
+    "carrot": 80.0,
+}
+
+def _count_to_g(name: str, count_qty: int) -> Optional[float]:
+    """Convert a count quantity to grams using the heuristic table. Returns None if unknown."""
+    for keyword, gpcount in _G_PER_COUNT.items():
+        if keyword in name:
+            return count_qty * gpcount
+    return None
+
+def _g_to_count(name: str, g_qty: int) -> Optional[float]:
+    """Convert a gram quantity to count. Returns None if unknown."""
+    for keyword, gpcount in _G_PER_COUNT.items():
+        if keyword in name:
+            return g_qty / gpcount
+    return None
+
+def _pantry_covers(pantry_map: dict[tuple[str, str], int],
+                   need_name: str, need_unit: str, need_qty: int) -> bool:
+    """
+    Return True if the pantry has enough of an ingredient to satisfy a recipe need.
+
+    Two-pass check:
+      1. Exact canonical name + unit match.
+      2. Fuzzy name match (uses _fuzzy_covers from cuisine_tools) with same-unit
+         or count↔g conversion via heuristic table.
+    """
+    from tools.cuisine_tools import _fuzzy_covers
+
+    # Pass 1: exact match
+    have = pantry_map.get((need_name, need_unit), 0)
+    if have >= need_qty:
+        return True
+
+    # Pass 2: fuzzy name match across all pantry entries
+    best_have = have  # track partial coverage for shortfall reporting
+    for (p_name, p_unit), p_qty in pantry_map.items():
+        if not _fuzzy_covers(p_name, need_name):
+            continue
+        # Same unit family — direct compare
+        if p_unit == need_unit:
+            if p_qty >= need_qty:
+                return True
+            best_have = max(best_have, p_qty)
+            continue
+        # count ↔ g conversion
+        if p_unit == "count" and need_unit == "g":
+            converted = _count_to_g(p_name or need_name, p_qty)
+            if converted is not None and converted >= need_qty:
+                return True
+        elif p_unit == "g" and need_unit == "count":
+            converted = _g_to_count(p_name or need_name, p_qty)
+            if converted is not None and converted >= need_qty:
+                return True
+
+    return False
+
+# Ingredients assumed to be always available in any kitchen — never flag as missing.
+_UNIVERSAL_INGREDIENTS = {
+    "salt", "water", "oil", "cooking oil", "vegetable oil", "black pepper", "pepper",
+    "sugar", "white sugar", "baking soda", "baking powder",
+}
+
+def _is_universal(item: str) -> bool:
+    """Return True if an ingredient is so common it should never be flagged missing."""
+    s = _clean_name(item).lower()
+    # exact match
+    if s in _UNIVERSAL_INGREDIENTS:
+        return True
+    # single-token suffix match (e.g. "sea salt" → "salt", "olive oil" → "oil")
+    tokens = s.split()
+    if tokens and tokens[-1] in _UNIVERSAL_INGREDIENTS:
+        return True
+    return False
+
+
 @tool
 def missing_ingredients(dish: str) -> str:
     """
@@ -168,9 +231,9 @@ def missing_ingredients(dish: str) -> str:
     STRING-ONLY input. Returns a short natural-language sentence.
 
     Matching rules:
-    • Name matching uses canonical base names (spaCy primary; inflect fallback).
-    • Units are normalized to g/ml/count families.
-    • Strict check (no creative swaps here).
+    • Fuzzy name matching (e.g. 'chicken' covers 'chicken breast', 'dried chilli' covers 'dried red chilies').
+    • Units normalized to g/ml/count; count↔g conversion via heuristics for common items.
+    • Universal staples (salt, oil, water, sugar, black pepper) are never flagged as missing.
     """
     dish = _clean_name(dish)
     if not isinstance(dish, str) or not dish:
@@ -180,7 +243,7 @@ def missing_ingredients(dish: str) -> str:
     if not recipe:
         return f"⚠️ Recipe '{dish}' not found."
 
-    # Build a canonical pantry map: (canon_name, unit) -> qty
+    # Build canonical pantry map: (canon_name, unit) -> qty
     pantry_raw = _load_pantry()
     pantry_map: dict[tuple[str, str], int] = {}
     for k, v in pantry_raw.items():
@@ -197,13 +260,13 @@ def missing_ingredients(dish: str) -> str:
         unit_raw = _normalize_unit(ing.get("unit") or "count")
         if need_qty <= 0:
             continue
+        # Skip universal staples — always assumed available
+        if _is_universal(raw_item):
+            continue
 
         cname, cunit = canonical_and_unit(raw_item, unit_raw)
-        have = int(pantry_map.get((cname, cunit), 0))
-        if have < need_qty:
-            # if completely missing, show full need; if partial, show shortfall
-            short = need_qty if have == 0 else (need_qty - have)
-            deficits.append(f"{short} {cunit} {raw_item}")
+        if not _pantry_covers(pantry_map, cname, cunit, need_qty):
+            deficits.append(f"{need_qty} {cunit} {raw_item}")
 
     dish_title = dish.strip().title()
     if not deficits:
@@ -240,20 +303,71 @@ def _aggregate_pantry_by_base(pantry: Dict[str, int]) -> Dict[str, Dict[str, int
         out[base][u] = int(v)
     return out
 
+# Substitution table: (keyword_in_missing, keyword_in_base) -> (prep_note, confidence)
+# Order matters — first match wins.
+_SUB_TABLE: list[tuple[str, str, str, float]] = [
+    # fish / seafood
+    ("fillet",          "fish",     "Cut into boneless fillets; remove skin if present.", 0.84),
+    ("shrimp",          "prawn",    "Use interchangeably; adjust cooking time slightly.",  0.90),
+    ("prawn",           "shrimp",   "Use interchangeably; adjust cooking time slightly.",  0.90),
+    # chili variants
+    ("dried",           "chili",    "Dry-roast fresh chilies 2–3 min to mimic dried heat.", 0.75),
+    ("chili flake",     "chili",    "Crush dried chilies or use 1 tsp flakes per 2 fresh.", 0.80),
+    # dairy
+    ("heavy cream",     "cream",    "Use as-is; any cream works for most sauces.",         0.88),
+    ("double cream",    "cream",    "Use as-is; any cream works for most sauces.",         0.88),
+    ("sour cream",      "yogurt",   "Use plain yogurt; add a squeeze of lemon for tang.",  0.78),
+    ("yogurt",          "cream",    "Use plain yogurt in place of cream in curries.",       0.75),
+    ("butter",          "ghee",     "Use butter instead of ghee; it browns faster.",        0.85),
+    ("ghee",            "butter",   "Clarify butter by skimming foam, or use as-is.",      0.85),
+    # oils
+    ("sesame oil",      "oil",      "Use a neutral oil; add a drop of toasted sesame if available.", 0.65),
+    ("olive oil",       "oil",      "Substitute any neutral cooking oil.",                  0.82),
+    # proteins
+    ("chicken breast",  "chicken",  "Use any chicken cut; adjust cook time accordingly.",  0.90),
+    ("ground beef",     "beef",     "Mince or finely chop beef as substitute.",            0.80),
+    ("ground chicken",  "chicken",  "Mince or finely chop chicken as substitute.",        0.80),
+    ("tofu",            "paneer",   "Use firm tofu instead of paneer; press out moisture.", 0.72),
+    ("paneer",          "tofu",     "Use firm pressed tofu; season with a pinch of salt.", 0.72),
+    # aromatics
+    ("spring onion",    "onion",    "Use regular onion; milder flavor.",                   0.80),
+    ("scallion",        "onion",    "Use regular onion; milder flavor.",                   0.80),
+    ("shallot",         "onion",    "Use 1 medium onion for every 3 shallots.",            0.82),
+    # acids
+    ("lemon juice",     "lime",     "Use lime juice; flavor is slightly more floral.",     0.88),
+    ("lime juice",      "lemon",    "Use lemon juice; very similar acidity.",              0.88),
+    ("rice vinegar",    "vinegar",  "Use white vinegar with a pinch of sugar.",            0.75),
+    # condiments / sauces
+    ("soy sauce",       "tamari",   "Use tamari or coconut aminos as soy-free swap.",      0.82),
+    ("fish sauce",      "soy sauce","Mix soy sauce with a squeeze of lime for umami.",     0.68),
+    ("oyster sauce",    "soy sauce","Mix soy sauce + a pinch of sugar to approximate.",    0.70),
+    # herbs
+    ("cilantro",        "coriander","Same herb — use interchangeably.",                    0.95),
+    ("coriander",       "cilantro", "Same herb — use interchangeably.",                    0.95),
+    ("parsley",         "cilantro", "Milder flavor; add a little lemon zest.",             0.65),
+    ("basil",           "herb",     "Works in most herb roles; slightly sweeter.",         0.70),
+    # starches
+    ("cornstarch",      "flour",    "Use 2 tsp flour per 1 tsp cornstarch for thickening.", 0.78),
+    ("potato starch",   "cornstarch","Use 1:1 as thickener; results may be slightly cloudier.", 0.80),
+    # sugars
+    ("brown sugar",     "sugar",    "Use white sugar + a drop of molasses or maple.",      0.85),
+    ("palm sugar",      "sugar",    "Use brown sugar or jaggery for a similar caramel note.", 0.80),
+]
+
 def _prep_note_for(missing_raw: str, base: str) -> str:
     s = _clean_name(missing_raw).lower()
-    if "fillet" in s and "fish" in base:
-        return "cut into boneless fillets; remove skin if present"
-    if "dried" in s and "chili" in base:
-        return "dry-roast chilies 2–3 min to mimic dried heat"
+    b = base.lower()
+    for kw_miss, kw_base, prep, _ in _SUB_TABLE:
+        if kw_miss in s and kw_base in b:
+            return prep
     return ""
 
 def _confidence_for(missing_raw: str, base: str) -> float:
     s = _clean_name(missing_raw).lower()
-    if "fillet" in s and "fish" in base:
-        return 0.84
-    if "dried" in s and "chili" in base:
-        return 0.75
+    b = base.lower()
+    for kw_miss, kw_base, _, conf in _SUB_TABLE:
+        if kw_miss in s and kw_base in b:
+            return conf
     return 0.70  # default for close base-name matches
 
 @tool

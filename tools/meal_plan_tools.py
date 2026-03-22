@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, datetime, re
+import json, os, datetime, re, random
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
@@ -9,15 +9,6 @@ from tools.cuisine_tools import _load as _load_recipes
 from tools.textnorm import canonical_key as _canon, canonical_and_unit as _canon_and_unit
 
 
-
-# -----------------------------------------------------------------------------
-# Optional legacy import: call_pantry (no-op stub if not present)
-# -----------------------------------------------------------------------------
-try:
-    from tools.manager_tools import call_pantry as _mgr_call_pantry  # legacy refresh
-except Exception:
-    def _mgr_call_pantry(_: str) -> str:
-        return ""
 
 ##############################################################################
 # Shared memory object – survives for the life of the Streamlit session
@@ -29,17 +20,8 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 PLAN_DIR = os.path.join(ROOT_DIR, "plans")
 os.makedirs(PLAN_DIR, exist_ok=True)
 
-##############################################################################
-# KitchenAgent reference (lazy import to avoid circular imports)
-##############################################################################
-_kitchen_chat = None
-try:
-    from agents.kitchen_agent import chat as _kitchen_chat
-except Exception:
-    _kitchen_chat = None
-
 # Default planning mode if not set by UI
-DEFAULT_MODE = "pantry-first"   # or "user-choice"
+DEFAULT_MODE = "pantry-first"
 
 def _get_mode() -> str:
     return (memory.memories.get("mode") or DEFAULT_MODE).strip().lower()
@@ -82,7 +64,10 @@ def _normalize_constraints(upd: Dict[str, Any]) -> Dict[str, Any]:
         c["cuisine"] = (val.strip().lower() or None) if isinstance(val, str) else None
     if "diet" in upd:
         val = (upd["diet"] or "").strip().lower()
-        c["diet"] = val if val in ("veg", "eggtarian", "non-veg") else None
+        _diet_aliases = {"vegetarian": "veg", "veggie": "veg", "veg": "veg",
+                         "eggtarian": "eggtarian", "eggetarian": "eggtarian",
+                         "non-veg": "non-veg", "nonveg": "non-veg", "meat": "non-veg"}
+        c["diet"] = _diet_aliases.get(val) or (val if val in ("veg", "eggtarian", "non-veg") else None)
     if "max_time" in upd:
         try:
             c["max_time"] = int(upd["max_time"])
@@ -119,97 +104,37 @@ def set_constraints(payload: Dict[str, Any] | str) -> str:
     nice_mode = "Pantry-first (strict)" if c["mode"] == "pantry-first-strict" else "Freeform"
     return f"OK. Mode: {nice_mode}, repeats: {c['allow_repeats']}, cuisine: {c['cuisine'] or 'any'}, diet: {c['diet'] or 'any'}, max_time: {c['max_time'] or 'any'}."
 
-def _fmt_prompt(payload: Dict[str, Any]) -> str:
-    """Turn the structured query into a natural-language prompt for Kitchen/Manager."""
-    diet      = payload.get("diet", "any")
-    meal_type = payload.get("meal_type", "meal")
-    max_time  = payload.get("max_cook_time")
-    exclude   = payload.get("exclude", []) or []
-    top_k     = payload.get("top_k", 5)
-    cuisine   = payload.get("cuisine")
-
-    # If caller didn’t specify prefer_pantry, derive from current mode
-    if "prefer_pantry" in payload:
-        prefer_pantry = bool(payload["prefer_pantry"])
-    else:
-        prefer_pantry = (_get_mode() == "pantry-first")
-
-    lines = []
-    if prefer_pantry:
-        lines.append("What can I cook with what's in my pantry?")
-    lines.append(f"Please suggest up to {top_k} {diet} recipes suitable for {meal_type}.")
-    if cuisine:
-        lines.append(f"The cuisine must be {cuisine}.")
-    if max_time:
-        lines.append(f"They should require no more than {max_time} minutes total time.")
-    if exclude:
-        lines.append("Do NOT include these dishes: " + ", ".join(exclude) + ".")
-    lines.append("If you pass a diet filter to tools, use codes: 'veg', 'eggtarian', or 'non-veg'.")
-    lines.append("Return ONE recipe name per line—no extra text.")
-    return " ".join(lines)
-
-@tool
-def get_planner_mode(_: str | None = None) -> str:
-    """Return current planning mode: 'pantry-first' or 'user-choice'."""
-    return _get_mode()
-
-@tool
-def set_planner_mode(mode: str) -> str:
-    """Set planning mode: 'pantry-first' or 'user-choice'."""
-    m = (mode or "").strip().lower()
-    if m not in ("pantry-first", "user-choice"):
-        return "Error: mode must be 'pantry-first' or 'user-choice'."
-    memory.memories["mode"] = m
-    return f"OK, mode set to {m}."
-
-@tool
-def call_manager(query: Dict[str, Any] | str | None = None) -> str:
-    """Ask KitchenAgent (preferred) or ManagerAgent (fallback) for recipe options.
-
-    Args:
-        query: dict with keys like {diet, cuisine, meal_type, max_cook_time, exclude, top_k}
-               or a JSON string containing the same fields.
-
-    Returns:
-        Raw text reply (expected: one recipe name per line).
-    """
-    if isinstance(query, str):
-        try:
-            payload: Dict[str, Any] = json.loads(query)
-        except Exception:
-            payload = {}
-    elif isinstance(query, dict):
-        payload = query
-    else:
-        payload = {}
-
-    prompt = _fmt_prompt(payload)
-
-    if _kitchen_chat is not None:
-        return _kitchen_chat(prompt)
-
-    return ("Error: KitchenAgent not available. "
-            "You can still use cuisine_tools.find_recipes_by_items directly.")
-
-from tools import pantry_tools as _pt  
+from tools import pantry_tools as _pt
+from tools.pantry_tools import get_pantry_items as _get_pantry_items
 
 def _canon_name_unit(item: str, unit: str) -> tuple[str, str]:
     return _canon_and_unit(item, unit)
 
 
-def _recipe_eligible_by_filters(rec: Dict[str, Any], c: Dict[str, Any]) -> bool:
+def _recipe_eligible_by_filters(rec: Dict[str, Any], c: Dict[str, Any],
+                                 meal_slot: str = "") -> bool:
+    from tools.cuisine_tools import diet_ok
     # cuisine
     if c.get("cuisine"):
         if (rec.get("cuisine") or "").strip().lower() != c["cuisine"]:
             return False
-    # diet
+    # diet — use hierarchy: veg ⊂ eggtarian ⊂ non-veg
     want = c.get("diet")
-    if want and (rec.get("diet") or "").strip().lower() not in (want, "any", ""):
+    if want and not diet_ok(rec.get("diet"), want):
         return False
     # time
     if c.get("max_time"):
         total = int(rec.get("prep_time_min", 0)) + int(rec.get("cook_time_min", 0))
         if total > int(c["max_time"]):
+            return False
+    # meal slot — only allow breakfast recipes in Breakfast slot;
+    # only allow non-breakfast recipes in Lunch/Dinner slots
+    mt = (rec.get("meal_type") or "lunch_dinner").lower()
+    if meal_slot.lower() == "breakfast":
+        if mt not in ("breakfast", "any"):
+            return False
+    elif meal_slot.lower() in ("lunch", "dinner"):
+        if mt == "breakfast":
             return False
     return True
 
@@ -263,8 +188,8 @@ def _apply_deduction(rec: Dict[str, Any], shadow: Dict[str, int]) -> None:
 
 
 
-def _eligible_recipes(c: Dict[str, Any]) -> List[Dict[str, Any]]:
-    return [r for r in _load_recipes() if _recipe_eligible_by_filters(r, c)]
+def _eligible_recipes(c: Dict[str, Any], meal_slot: str = "") -> List[Dict[str, Any]]:
+    return [r for r in _load_recipes() if _recipe_eligible_by_filters(r, c, meal_slot)]
 
 def _slot_names(meals: Any) -> List[str]:
     if isinstance(meals, list) and all(isinstance(m, str) for m in meals):
@@ -316,12 +241,7 @@ def _shadow_pantry_snapshot_canon() -> dict[tuple[str, str], int]:
     Build a shadow pantry map with canonical names:
       (canonical_name, unit_family) -> quantity
     """
-    # read the single source-of-truth pantry DB
-    try:
-        items = dict(_pt._db.items)  # e.g., {'spinach (g)': 260, 'paneer (g)': 300, ...}
-    except Exception:
-        # extremely rare fallback: empty shadow
-        items = {}
+    items = _get_pantry_items()  # uses public API
     shadow: dict[tuple[str, str], int] = {}
     for k, v in items.items():
         base_raw, unit_raw = _split_pantry_key(k)
@@ -429,10 +349,6 @@ def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
         start_at = (max(existing_ns) + 1) if existing_ns else 1
     target_days = list(range(start_at, start_at + days))
 
-    # Candidate pool (filtered by cuisine/diet/time); deterministic order as tie-breaker
-    candidates = _eligible_recipes(c)
-    candidates.sort(key=lambda r: ((r.get("name") or "").lower(), (r.get("cuisine") or "").lower()))
-
     # Shadow pantry for strict mode (canonicalized)
     shadow = _shadow_pantry_snapshot_canon() if c["mode"] == "pantry-first-strict" else {}
 
@@ -445,11 +361,6 @@ def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
 
     prev_dish_lower: Optional[str] = None
 
-    # ---- NEW: compute once-coverable set (from the initial pantry), sorted by tightness
-    initial_shadow = dict(shadow)
-    once_list = _coverable_once_sorted(candidates, initial_shadow) if shadow else []
-    once_names_left: set[str] = { (r.get("name") or "").strip().lower() for r in once_list }
-
     for day_i in target_days:
         day_key = f"Day{day_i}"
         day_row = plan.setdefault(day_key, {})
@@ -460,49 +371,62 @@ def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
                 prev_dish_lower = (day_row.get(meal) or "").strip().lower() or prev_dish_lower
                 continue
 
+            # Build per-slot candidate pool filtered by meal type (breakfast vs lunch/dinner)
+            slot_candidates = _eligible_recipes(c, meal_slot=meal)
+            slot_candidates.sort(key=lambda r: (
+                (r.get("name") or "").lower(), (r.get("cuisine") or "").lower()
+            ))
+
             pick = None
             pick_reason = None
 
             if c["mode"] == "pantry-first-strict":
-                # ---------- PASS 1: prefer dishes not yet placed from the initial 100%-coverable set ----------
+                # ---- compute once-coverable set for this slot
+                initial_shadow = dict(shadow)
+                once_list = _coverable_once_sorted(slot_candidates, initial_shadow)
+                once_names_left: set[str] = {
+                    (r.get("name") or "").strip().lower() for r in once_list
+                }
+
+                # PASS 1: prefer unseen dishes from the 100%-coverable set
                 if once_names_left:
                     for r in once_list:
-                        name = (r.get("name") or "").strip()
+                        name   = (r.get("name") or "").strip()
                         name_l = name.lower()
                         if name_l not in once_names_left:
                             continue
                         if (not c.get("allow_repeats", True)) and prev_dish_lower and name_l == prev_dish_lower:
                             continue
                         if _can_fulfill_strict_canon(r, shadow):
-                            pick = r
+                            pick        = r
                             pick_reason = "100% pantry coverage (once-each pass)"
                             _apply_deduction_canon(pick, shadow)
                             once_names_left.discard(name_l)
                             break
 
-                # ---------- PASS 2: any coverable recipe now (still respects no-consecutive) ----------
+                # PASS 2: any coverable recipe for this slot
                 if pick is None:
-                    for r in candidates:
-                        name = (r.get("name") or "").strip()
+                    for r in slot_candidates:
+                        name   = (r.get("name") or "").strip()
                         name_l = name.lower()
                         if (not c.get("allow_repeats", True)) and prev_dish_lower and name_l == prev_dish_lower:
                             continue
                         if _can_fulfill_strict_canon(r, shadow):
-                            pick = r
+                            pick        = r
                             pick_reason = "100% pantry coverage"
                             _apply_deduction_canon(pick, shadow)
-                            # If it was also in once_list but we got to it only now, clear it
-                            once_names_left.discard(name_l)
                             break
 
             else:
-                # Freeform: any eligible (avoid consecutive if requested)
-                for r in candidates:
-                    name = (r.get("name") or "").strip()
+                # Freeform: shuffle for variety, avoid consecutive if requested
+                shuffled = list(slot_candidates)
+                random.shuffle(shuffled)
+                for r in shuffled:
+                    name   = (r.get("name") or "").strip()
                     name_l = name.lower()
                     if (not c.get("allow_repeats", True)) and prev_dish_lower and name_l == prev_dish_lower:
                         continue
-                    pick = r
+                    pick        = r
                     pick_reason = "freeform pick"
                     break
 
@@ -568,8 +492,6 @@ def update_plan(payload: Dict[str, Any] | str | None = None) -> str:
     Accepts either a dict or a JSON string:
       {"day":"Day1","meal":"Breakfast","recipe_name":"Palak Paneer", "reason":"top pantry coverage 67%"}
     """
-    print("DEBUG update_plan type:", type(payload))
-
     # tolerate quoted JSON from the model
     if isinstance(payload, str):
         try:
@@ -772,7 +694,12 @@ def save_plan(payload: Dict[str, Any] | str | None = None) -> str:
     if isinstance(payload, dict):
         file_name = payload.get("file_name")
     elif isinstance(payload, str):
-        file_name = payload
+        s = payload.strip()
+        try:
+            d = json.loads(s)
+            file_name = d.get("file_name") if isinstance(d, dict) else s
+        except Exception:
+            file_name = s
 
     if not file_name:
         file_name = f"plan_{datetime.datetime.now().strftime('%Y-%m-%dT%H-%M')}"
@@ -856,6 +783,24 @@ def cook_meal(payload: Dict[str, Any] | str) -> str:
             missing.append(f"{need_qty - used} {unit_n} {item}")
 
     # (No direct file writes; _pt._db already saved.)
+
+    # Mark the slot as cooked in the plan (prefix with ✅ for UI)
+    plan = memory.memories.get("plan", {})
+    if payload.get("day") and payload.get("meal"):
+        slot_day = payload["day"]
+        slot_meal = payload["meal"]
+        if plan.get(slot_day, {}).get(slot_meal):
+            current = plan[slot_day][slot_meal]
+            if not current.startswith("✅"):
+                plan[slot_day][slot_meal] = f"✅ {current}"
+            memory.memories["plan"] = plan
+    else:
+        # find by dish name
+        for d_key, d_val in plan.items():
+            for m_key, m_dish in d_val.items():
+                if m_dish.strip("✅ ").lower() == dish.lower() and not m_dish.startswith("✅"):
+                    plan[d_key][m_key] = f"✅ {m_dish}"
+        memory.memories["plan"] = plan
 
     # Log for UI
     log = memory.memories.setdefault("planner_log", [])

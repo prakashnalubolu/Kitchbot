@@ -228,6 +228,10 @@ class _PantryDB:
 
 _db = _PantryDB()
 
+def get_pantry_items() -> Dict[str, int]:
+    """Return a copy of the current pantry as { '<item> (<unit>)': qty }."""
+    return dict(_db.items)
+
 # -------------------------- tool I/O wrappers ------------------------
 
 def _parse_payload(payload: str) -> dict:

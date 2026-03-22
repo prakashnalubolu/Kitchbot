@@ -119,30 +119,6 @@ def _coerce_payload(payload):
             return json.loads(cand)
         raise ValueError(f"Invalid JSON payload: {s[:120]}...")
 
-# ── name canonicalization for coverage checks ─────────────────────────────
-def _canon(name: str) -> str:
-    """
-    Canonicalize an ingredient/pantry token to a base form:
-    - import canonical_item_name lazily to avoid circular imports,
-    - lowercase,
-    - very simple singularization (tomatoes -> tomato).
-    """
-    # Lazy import to break the cycle with manager_tools
-    try:
-        from tools.manager_tools import canonical_item_name as _canon_name
-    except Exception:
-        # Safe fallback if manager_tools isn't available yet
-        def _canon_name(x: str) -> str:
-            return (x or "").strip().lower()
-
-    base = _canon_name(name) if name else ""
-    s = (base or "").strip().lower()
-    if s.endswith("ies"):
-        s = s[:-3] + "y"
-    elif s.endswith("s") and len(s) > 3:
-        s = s[:-1]
-    return s
-
 # ── LangChain tools ────────────────────────────────────────────────────────
 @tool
 def get_recipe(name: str) -> str:
@@ -160,11 +136,13 @@ def get_recipe(name: str) -> str:
 
 @tool
 def list_recipes(cuisine: Optional[str] = None,
-                 max_time: Optional[int] = None) -> str:
+                 max_time: Optional[int] = None,
+                 diet: Optional[str] = None) -> str:
     """
     List recipe names. Optional filters:
       • cuisine = "italian", "indian", …
       • max_time = total time in minutes
+      • diet = "veg" | "eggtarian" | "non-veg"
     """
     items = _load()
     if cuisine:
@@ -172,9 +150,145 @@ def list_recipes(cuisine: Optional[str] = None,
     if max_time is not None:
         items = [r for r in items
                  if r["prep_time_min"] + r["cook_time_min"] <= max_time]
+    if diet:
+        items = [r for r in items if diet_ok(r.get("diet"), diet)]
     if not items:
         return "📭 No recipes found with those filters."
     return "\n".join(f"- {r['name'].title()} ({r['cuisine']})" for r in items)
+
+# ── Substitution-aware ingredient matching ────────────────────────────────
+#
+# Two-layer design (mirrors what Spoonacular/Yummly use at their core):
+#
+# LAYER 1 — PREPARATION modifiers: safe to strip.
+#   These change the FORM of an ingredient, not its identity.
+#   "ground chicken" → "chicken" ✓   "diced tomato" → "tomato" ✓
+#
+# LAYER 2 — FLAVOR/TYPE qualifiers: NEVER strip, treat compound as atomic.
+#   These change the IDENTITY of an ingredient entirely.
+#   "coconut milk" ≠ "milk"    "peanut butter" ≠ "butter"
+#   "soy sauce"    ≠ "sauce"   "sesame oil" ≠ "oil" (completely different flavor)
+#
+# Without this split, "milk" would match "coconut milk" via word-subset check —
+# a false positive that tells users they can cook Thai curry with dairy milk.
+
+_PREP_MODIFIERS = {
+    # cutting / processing
+    "ground", "minced", "diced", "chopped", "sliced", "crushed", "shredded",
+    "grated", "cubed", "julienned", "mashed", "pureed", "blended",
+    # butchery
+    "boneless", "skinless", "deboned", "trimmed",
+    # preservation state
+    "dried", "fresh", "frozen", "canned", "tinned", "pickled",
+    # size
+    "whole", "half", "large", "small", "medium",
+    # cooking state
+    "raw", "cooked", "smoked", "roasted", "grilled", "fried", "boiled", "steamed",
+    # flour type (all-purpose flour → flour)
+    "all-purpose", "all", "purpose",
+    # fat qualifiers that don't change the base dairy identity
+    "heavy", "light", "double", "single",
+    # salt
+    "unsalted", "salted",
+    # heat level for chilis
+    "hot", "mild",
+    # colour qualifiers for bell peppers, lentils (red/green pepper → pepper)
+    "red", "green", "yellow",
+    # refinement (refined oil → oil, but coconut stays because coconut is a flavor qualifier)
+    "refined", "extra", "virgin",
+}
+
+# Flavor/type qualifiers — the FIRST word in a compound ingredient that defines
+# a fundamentally different product.  "coconut milk" is NOT milk; it's its own thing.
+# Expanding this list is the primary maintenance task as recipes grow.
+_FLAVOR_QUALIFIERS = {
+    # plant-based "milks" — none are interchangeable with dairy milk
+    "coconut", "almond", "oat", "soy", "rice", "cashew", "hemp",
+    # nut/seed butters — not interchangeable with dairy butter
+    "peanut", "tahini",
+    # flavored oils & sauces — identity defined by the qualifier
+    "sesame", "fish", "oyster", "hoisin", "worcestershire", "teriyaki",
+    # vinegars
+    "balsamic", "apple",
+    # sugars where the type matters to the recipe outcome
+    "brown", "powdered", "icing", "palm",
+    # stocks / broths — handled via exact match; removing from here
+    # because "chicken" as a qualifier would wrongly block "chicken breast"
+}
+
+def _is_compound_atomic(phrase: str) -> bool:
+    """
+    Return True if the first word of a multi-word ingredient is a flavor/type
+    qualifier — meaning the whole phrase must be treated as an atomic unit.
+    E.g.: "coconut milk" → True  (coconut is a flavor qualifier)
+          "ground chicken" → False (ground is a prep modifier, safe to strip)
+    """
+    words = phrase.strip().split()
+    if len(words) < 2:
+        return False
+    return words[0] in _FLAVOR_QUALIFIERS
+
+def _base_ingredient(canon: str) -> str:
+    """
+    Strip PREPARATION modifiers to get the core ingredient.
+    Only strips if the phrase is NOT a compound atomic (flavor-qualified) ingredient.
+    """
+    if _is_compound_atomic(canon):
+        return canon  # treat "coconut milk" as atomic — don't reduce to "milk"
+    words = [w for w in canon.split() if w not in _PREP_MODIFIERS]
+    return " ".join(words) if words else canon
+
+def _fuzzy_covers(pantry_canon: str, recipe_canon: str) -> bool:
+    """
+    Return True if a pantry item can reasonably satisfy a recipe ingredient.
+
+    Safe matches:
+      "chicken"   covers "ground chicken", "chicken breast", "boneless chicken"
+      "tomato"    covers "diced tomato", "crushed tomato"
+      "flour"     covers "all-purpose flour"
+      "cream"     covers "heavy cream", "double cream"
+      "onion"     covers "red onion"
+
+    Correctly blocked (compound atomic ingredients):
+      "milk"      does NOT cover "coconut milk"
+      "butter"    does NOT cover "peanut butter"
+      "sauce"     does NOT cover "soy sauce"
+      "oil"       does NOT cover "sesame oil"
+    """
+    if pantry_canon == recipe_canon:
+        return True
+
+    # Block: if the recipe ingredient is a compound atomic, pantry must match exactly
+    # or the pantry item itself must be the same compound.
+    # "milk" should not cover "coconut milk".
+    if _is_compound_atomic(recipe_canon):
+        # Only allow if pantry item IS that compound or its base (same compound family)
+        # e.g. "coconut milk" pantry covers "coconut milk" recipe (exact, already caught above)
+        # "milk" pantry should NOT cover "coconut milk" recipe
+        return False
+
+    # Safe: strip preparation modifiers from both sides and compare
+    p_base = _base_ingredient(pantry_canon)
+    r_base = _base_ingredient(recipe_canon)
+    if p_base and r_base and p_base == r_base:
+        return True
+
+    # Safe: pantry item words ⊆ recipe ingredient words
+    # "chicken" ⊂ {"ground", "chicken"} → True
+    # Guarded: we already blocked compound atomics above so "milk" ⊂ {"coconut","milk"} never reaches here
+    p_words = set(pantry_canon.split())
+    r_words = set(recipe_canon.split())
+    if p_words and p_words.issubset(r_words):
+        return True
+
+    return False
+
+def _covered_count(have_set: set, need_set: set) -> int:
+    """Count how many recipe ingredients are covered by the pantry (fuzzy-aware)."""
+    return sum(
+        1 for need in need_set
+        if need in have_set or any(_fuzzy_covers(have, need) for have in have_set)
+    )
 
 def _canon(s: str) -> str:
     return canonical_key(s)
@@ -253,7 +367,7 @@ def find_recipes_by_items(payload: dict | str) -> str:
         if total_need == 0:
             continue
 
-        covered_cnt = len(need_set & have_set)
+        covered_cnt = _covered_count(have_set, need_set)
         is_full = (covered_cnt == total_need)
         total_time = int(r.get("prep_time_min", 0)) + int(r.get("cook_time_min", 0))
         ratio = covered_cnt / total_need
