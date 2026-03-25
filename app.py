@@ -699,6 +699,75 @@ with tab_pantry:
                         except Exception as e:
                             st.error(f"Error: {e}")
 
+        # ── Unit converter ──────────────────────────────────────────────────────
+        with st.expander("⚖️  Unit converter"):
+            _WEIGHT = {"g": 1.0, "kg": 1000.0, "oz": 28.3495, "lb": 453.592}
+            _VOLUME = {"ml": 1.0, "l": 1000.0, "cup": 240.0, "tbsp": 15.0, "tsp": 5.0}
+            _ALL_UNITS = list(_WEIGHT) + list(_VOLUME) + ["pieces"]
+            _unit_labels = {
+                "g":"grams (g)", "kg":"kilograms (kg)", "oz":"ounces (oz)", "lb":"pounds (lb)",
+                "ml":"millilitres (ml)", "l":"litres (l)", "cup":"cups", "tbsp":"tablespoons",
+                "tsp":"teaspoons", "pieces":"pieces (count)",
+            }
+
+            cv1, cv2, cv3 = st.columns([1.2, 1.2, 1.2])
+            cv_qty  = cv1.number_input("Quantity", min_value=0.01, value=1.0, step=0.5, key="cv_qty")
+            cv_from = cv2.selectbox("From", _ALL_UNITS, index=0,
+                                    format_func=lambda u: _unit_labels.get(u, u), key="cv_from")
+            cv_to   = cv3.selectbox("To",   _ALL_UNITS,
+                                    index=_ALL_UNITS.index("kg") if "kg" in _ALL_UNITS else 1,
+                                    format_func=lambda u: _unit_labels.get(u, u), key="cv_to")
+
+            # Item name only needed for pieces↔weight/volume
+            _needs_item = (cv_from == "pieces" or cv_to == "pieces")
+            cv_item = ""
+            if _needs_item:
+                cv_item = st.text_input("Item name (required for pieces conversion)",
+                                        placeholder="e.g. egg, onion, carrot…", key="cv_item")
+
+            # Compute result
+            def _do_convert(qty, fu, tu, item=""):
+                if fu == tu:
+                    return f"{qty:g} {tu}"
+                if fu in _WEIGHT and tu in _WEIGHT:
+                    r = qty * _WEIGHT[fu] / _WEIGHT[tu]
+                    return f"{r:.4g} {tu}"
+                if fu in _VOLUME and tu in _VOLUME:
+                    r = qty * _VOLUME[fu] / _VOLUME[tu]
+                    return f"{r:.4g} {tu}"
+                # pieces ↔ weight
+                if (fu == "pieces" or tu == "pieces") and item.strip():
+                    from tools.pantry_tools import _convert_qty
+                    from tools.manager_tools import _count_to_g, _g_to_count
+                    item_l = item.strip().lower()
+                    if fu == "pieces" and tu in _WEIGHT:
+                        g = _count_to_g(item_l, qty)
+                        if g is None:
+                            r = _convert_qty(item_l, qty, "count", "g")
+                            g = r if r else None
+                        if g is not None:
+                            return f"{g * _WEIGHT['g'] / _WEIGHT[tu]:.4g} {tu}"
+                    elif fu in _WEIGHT and tu == "pieces":
+                        g_qty = qty * _WEIGHT[fu]
+                        cnt = _g_to_count(item_l, g_qty)
+                        if cnt is None:
+                            cnt = _convert_qty(item_l, g_qty, "g", "count")
+                        if cnt is not None:
+                            return f"{cnt:.4g} pieces"
+                    return None  # no rule found
+                return None  # cross-family (weight↔volume) not supported
+
+            _result = _do_convert(cv_qty, cv_from, cv_to, cv_item)
+            if _result:
+                st.success(f"**{cv_qty:g} {cv_from}** = **{_result}**")
+            elif _needs_item and not cv_item.strip():
+                st.info("Enter an item name above to convert pieces ↔ weight.")
+            elif _needs_item:
+                st.warning(f"No conversion rule found for **{cv_item.strip()}** pieces ↔ {cv_to}. "
+                           f"Try adding a rule in `data/alt_units.json`.")
+            else:
+                st.warning("Can't convert between weight and volume without knowing the ingredient density.")
+
         # ── Reset pantry ────────────────────────────────────────────────────────
         st.divider()
         if st.button("🗑️  Reset pantry", use_container_width=True):
