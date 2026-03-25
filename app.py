@@ -726,15 +726,21 @@ with tab_pantry:
                                         placeholder="e.g. egg, onion, carrot…", key="cv_item")
 
             # Compute result
+            def _fmt_num(n: float) -> str:
+                """Format a number cleanly: integer if whole, else up to 2 decimal places."""
+                if n == int(n):
+                    return f"{int(n):,}"
+                return f"{n:,.2f}".rstrip("0").rstrip(".")
+
             def _do_convert(qty, fu, tu, item=""):
                 if fu == tu:
-                    return f"{qty:g} {tu}"
+                    return f"{_fmt_num(qty)} {tu}"
                 if fu in _WEIGHT and tu in _WEIGHT:
                     r = qty * _WEIGHT[fu] / _WEIGHT[tu]
-                    return f"{r:.4g} {tu}"
+                    return f"{_fmt_num(r)} {tu}"
                 if fu in _VOLUME and tu in _VOLUME:
                     r = qty * _VOLUME[fu] / _VOLUME[tu]
-                    return f"{r:.4g} {tu}"
+                    return f"{_fmt_num(r)} {tu}"
                 # pieces ↔ weight
                 if (fu == "pieces" or tu == "pieces") and item.strip():
                     from tools.pantry_tools import _convert_qty
@@ -746,14 +752,14 @@ with tab_pantry:
                             r = _convert_qty(item_l, qty, "count", "g")
                             g = r if r else None
                         if g is not None:
-                            return f"{g * _WEIGHT['g'] / _WEIGHT[tu]:.4g} {tu}"
+                            return f"{_fmt_num(g * _WEIGHT['g'] / _WEIGHT[tu])} {tu}"
                     elif fu in _WEIGHT and tu == "pieces":
                         g_qty = qty * _WEIGHT[fu]
                         cnt = _g_to_count(item_l, g_qty)
                         if cnt is None:
                             cnt = _convert_qty(item_l, g_qty, "g", "count")
                         if cnt is not None:
-                            return f"{cnt:.4g} pieces"
+                            return f"{_fmt_num(cnt)} pieces"
                     return None  # no rule found
                 return None  # cross-family (weight↔volume) not supported
 
