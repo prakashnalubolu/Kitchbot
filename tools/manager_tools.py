@@ -104,10 +104,24 @@ def canonical_item_name(name: str) -> str:
 
 # ------------------------------- Pantry IO ----------------------------------
 def _load_pantry() -> Dict[str, int]:
+    """Load pantry JSON (new nested or old flat) and return flat {item (unit): qty} dict."""
     try:
         with open(PANTRY_JSON_PATH, "r", encoding="utf-8") as fp:
             data = json.load(fp)
-            return {k: int(v) for (k, v) in data.items()}
+        flat: Dict[str, int] = {}
+        for item, entry in data.items():
+            if isinstance(entry, dict):
+                if "qty" in entry and "unit" in entry:
+                    qty = int(entry.get("qty") or 0)
+                    if qty > 0:
+                        flat[f"{item} ({entry['unit']})"] = qty
+                if "count" in entry:
+                    cnt = int(entry.get("count") or 0)
+                    if cnt > 0:
+                        flat[f"{item} (count)"] = cnt
+            elif isinstance(entry, (int, float)):
+                flat[item] = int(entry)
+        return flat
     except FileNotFoundError:
         return {}
     except Exception:

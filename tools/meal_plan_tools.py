@@ -564,12 +564,27 @@ except Exception:
 PANTRY_JSON_PATH = os.path.join(ROOT_DIR, "data", "pantry.json")
 
 def _load_pantry() -> Dict[str, int]:
+    """Load pantry JSON (new nested or old flat) and return flat {item (unit): qty} dict."""
     try:
         with open(PANTRY_JSON_PATH, "r", encoding="utf-8") as fp:
-            return json.load(fp)
+            data = json.load(fp)
+        flat: Dict[str, int] = {}
+        for item, entry in data.items():
+            if isinstance(entry, dict):
+                if "qty" in entry and "unit" in entry:
+                    qty = int(entry.get("qty") or 0)
+                    if qty > 0:
+                        flat[f"{item} ({entry['unit']})"] = qty
+                if "count" in entry:
+                    cnt = int(entry.get("count") or 0)
+                    if cnt > 0:
+                        flat[f"{item} (count)"] = cnt
+            elif isinstance(entry, (int, float)):
+                flat[item] = int(entry)
+        return flat
     except FileNotFoundError:
         return {}
-    except json.JSONDecodeError:
+    except Exception:
         return {}
 
 def _normalise(name: str) -> str:

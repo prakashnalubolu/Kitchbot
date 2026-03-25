@@ -1,58 +1,196 @@
 {
-  "rice (g)": 1600,
-  "wheat flour (g)": 1500,
-  "toor dal (g)": 500,
-  "chana dal (g)": 600,
-  "moong dal (g)": 500,
-  "urad dal (g)": 250,
-  "besan (g)": 500,
-  "ghee (g)": 250,
-  "vegetable oil (ml)": 970,
-  "tamarind (g)": 77,
-  "jaggery (g)": 200,
-  "tomato (count)": 12,
-  "onion (count)": 13,
-  "potato (count)": 10,
-  "curry leaves (count)": 50,
-  "coriander leaves (count)": 100,
-  "carrot (count)": 30,
-  "green bean (g)": 200,
-  "lemon (count)": 6,
-  "mustard seed (g)": 50,
-  "cumin (g)": 100,
-  "coriander powder (g)": 200,
-  "red chili powder (g)": 100,
-  "garam masala (g)": 50,
-  "turmeric (g)": 50,
-  "clove (g)": 200,
-  "cardamom (g)": 200,
-  "cinnamon (g)": 230,
-  "egg (count)": 17,
-  "white fish (g)": 500,
-  "curd (g)": 500,
-  "milk (g)": 1000,
-  "coffee (g)": 500,
-  "fish sauce (ml)": 100,
-  "soy sauce (ml)": 130,
-  "thai basil (g)": 110,
-  "coconut milk (ml)": 1000,
-  "dried chilli (count)": 15,
-  "spring onion (count)": 13,
-  "garlic (count)": 12,
-  "ginger (g)": 140,
-  "noodle (g)": 500,
-  "peanut (g)": 200,
-  "lemon grass (count)": 2,
-  "lime (count)": 2,
-  "milk (ml)": 500,
-  "green chilli (count)": 2,
-  "chillies (count)": 30,
-  "ground chicken (g)": 750,
-  "chicken (g)": 2000,
-  "cream (ml)": 140,
-  "spinach (count)": 2,
-  "spinach (g)": 500,
-  "paneer (g)": 1000,
-  "cooked rice (g)": 1000,
-  "coconut milk (g)": 1000
+  "besan": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "cardamom": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "carrot": {
+    "count": 27
+  },
+  "chicken": {
+    "qty": 2000,
+    "unit": "g",
+    "count": 25
+  },
+  "chana dal": {
+    "qty": 600,
+    "unit": "g"
+  },
+  "chilli": {
+    "count": 30
+  },
+  "cinnamon": {
+    "qty": 230,
+    "unit": "g"
+  },
+  "clove": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "coffee": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "cooked rice": {
+    "qty": 1000,
+    "unit": "g"
+  },
+  "coriander leaves": {
+    "count": 100
+  },
+  "coriander powder": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "cream": {
+    "qty": 140,
+    "unit": "ml"
+  },
+  "cumin": {
+    "qty": 100,
+    "unit": "g"
+  },
+  "curd": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "curry leaves": {
+    "count": 50
+  },
+  "dried chilli": {
+    "count": 15
+  },
+  "egg": {
+    "count": 12,
+    "qty": 660,
+    "unit": "g"
+  },
+  "fish sauce": {
+    "qty": 100,
+    "unit": "ml"
+  },
+  "garam masala": {
+    "qty": 50,
+    "unit": "g"
+  },
+  "garlic": {
+    "count": 12
+  },
+  "ghee": {
+    "qty": 250,
+    "unit": "g"
+  },
+  "ginger": {
+    "qty": 140,
+    "unit": "g"
+  },
+  "green bean": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "green chilli": {
+    "count": 2
+  },
+  "jaggery": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "lemon": {
+    "count": 6
+  },
+  "lemon grass": {
+    "count": 2
+  },
+  "lime": {
+    "count": 2
+  },
+  "moong dal": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "mustard seed": {
+    "qty": 50,
+    "unit": "g"
+  },
+  "noodle": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "onion": {
+    "count": 13,
+    "qty": 1300,
+    "unit": "g"
+  },
+  "paneer": {
+    "qty": 1000,
+    "unit": "g"
+  },
+  "peanut": {
+    "qty": 200,
+    "unit": "g"
+  },
+  "potato": {
+    "count": 10,
+    "qty": 1500,
+    "unit": "g"
+  },
+  "red chili powder": {
+    "qty": 100,
+    "unit": "g"
+  },
+  "rice": {
+    "qty": 1600,
+    "unit": "g"
+  },
+  "soy sauce": {
+    "qty": 130,
+    "unit": "ml"
+  },
+  "spring onion": {
+    "count": 13
+  },
+  "tamarind": {
+    "qty": 77,
+    "unit": "g"
+  },
+  "thai basil": {
+    "qty": 110,
+    "unit": "g"
+  },
+  "tomato": {
+    "count": 12,
+    "qty": 1200,
+    "unit": "g"
+  },
+  "toor dal": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "turmeric": {
+    "qty": 50,
+    "unit": "g"
+  },
+  "urad dal": {
+    "qty": 250,
+    "unit": "g"
+  },
+  "vegetable oil": {
+    "qty": 970,
+    "unit": "ml"
+  },
+  "wheat flour": {
+    "qty": 1500,
+    "unit": "g"
+  },
+  "white fish": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "ground chicken": {
+    "qty": 750,
+    "unit": "g"
+  }
 }

@@ -291,19 +291,32 @@ def _pretty_quantity(item: str, unit: str, qty: Any) -> str:
 
 def _parse_pantry_rows(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     rows = []
-    for k, v in sorted((d or {}).items(), key=lambda kv: kv[0].lower()):
-        m = KEY_RE.match(k)
-        item = m.group(1).strip().lower() if m else k.strip().lower()
-        unit = m.group(2).strip().lower() if m else "count"
-        try:    qty = int(v)
-        except:
-            try:    qty = float(v)
-            except: qty = v
-        rows.append({"item": item, "unit": unit, "quantity": qty})
+    for item, entry in sorted((d or {}).items(), key=lambda kv: kv[0].lower()):
+        item_l = item.strip().lower()
+        if isinstance(entry, dict):
+            # New nested format: {"qty":..., "unit":..., "count":...}
+            count = int(entry["count"]) if "count" in entry else None
+            qty   = int(entry["qty"])   if "qty"   in entry else None
+            unit  = str(entry["unit"])  if "unit"  in entry else None
+            rows.append({"item": item_l, "count": count, "qty": qty, "unit": unit})
+        elif isinstance(entry, (int, float)):
+            # Old flat format fallback (e.g. "egg (count)": 12)
+            m = KEY_RE.match(item)
+            base = m.group(1).strip().lower() if m else item_l
+            u    = m.group(2).strip().lower() if m else "count"
+            if u == "count":
+                rows.append({"item": base, "count": int(entry), "qty": None, "unit": None})
+            else:
+                rows.append({"item": base, "count": None, "qty": int(entry), "unit": u})
     for i, r in enumerate(rows, 1):
         r["#"] = i
-    return [{"#": r["#"], "Item": r["item"], "Unit": r["unit"],
-             "Quantity": _pretty_quantity(r["item"], r["unit"], r["quantity"])} for r in rows]
+    out = []
+    for r in rows:
+        amount = f"{r['qty']} {r['unit']}" if r["qty"] and r["unit"] else ("—" if not r["qty"] else str(r["qty"]))
+        out.append({"#": r["#"], "Item": r["item"],
+                    "Count": r["count"] if r["count"] is not None else "—",
+                    "Amount": amount})
+    return out
 
 def _fmt_recipe_md(r: dict) -> str:
     name  = str(r.get("name","")).title()
@@ -455,10 +468,10 @@ with tab_pantry:
             df = pd.DataFrame(rows)
             st.dataframe(df, use_container_width=True, hide_index=True,
                          column_config={
-                             "#":        st.column_config.NumberColumn(width="small"),
-                             "Item":     st.column_config.TextColumn(width="medium"),
-                             "Unit":     st.column_config.TextColumn(width="small"),
-                             "Quantity": st.column_config.TextColumn(width="medium"),
+                             "#":      st.column_config.NumberColumn(width="small"),
+                             "Item":   st.column_config.TextColumn(width="medium"),
+                             "Count":  st.column_config.TextColumn(width="small"),
+                             "Amount": st.column_config.TextColumn(width="small"),
                          })
             st.caption(f"{len(rows)} item{'s' if len(rows) != 1 else ''} in pantry")
         elif ok and not payload:
@@ -487,12 +500,18 @@ with tab_pantry:
                 ok_p, p_data = _load_json_ok(PANTRY_PATH)
                 if ok_p and isinstance(p_data, dict):
                     _ai = add_item.strip().lower()
-                    for k in p_data:
-                        _base = k.split("(")[0].strip().lower()
+                    for item_k, entry_v in p_data.items():
+                        _base = item_k.strip().lower()
                         if _ai in _base or _base in _ai:
-                            _uk = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
-                            if _uk not in _add_stored:
-                                _add_stored.append(_uk)
+                            if isinstance(entry_v, dict):
+                                if "unit" in entry_v and entry_v["unit"] not in _add_stored:
+                                    _add_stored.append(entry_v["unit"])
+                                if "count" in entry_v and "count" not in _add_stored:
+                                    _add_stored.append("count")
+                            elif isinstance(entry_v, (int, float)):
+                                _uk = item_k.split("(")[1].rstrip(")").strip() if "(" in item_k else "count"
+                                if _uk not in _add_stored:
+                                    _add_stored.append(_uk)
 
             _unit_opts = ["count", "g", "ml"]
             _unit_labels_add = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
@@ -553,12 +572,18 @@ with tab_pantry:
                 ok_p, p_data = _load_json_ok(PANTRY_PATH)
                 if ok_p and isinstance(p_data, dict):
                     _item_l = rem_item.strip().lower()
-                    for k in p_data:
-                        _base = k.split("(")[0].strip().lower()
+                    for item_k, entry_v in p_data.items():
+                        _base = item_k.strip().lower()
                         if _item_l in _base or _base in _item_l:
-                            _unit_k = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
-                            if _unit_k not in _stored_units:
-                                _stored_units.append(_unit_k)
+                            if isinstance(entry_v, dict):
+                                if "unit" in entry_v and entry_v["unit"] not in _stored_units:
+                                    _stored_units.append(entry_v["unit"])
+                                if "count" in entry_v and "count" not in _stored_units:
+                                    _stored_units.append("count")
+                            elif isinstance(entry_v, (int, float)):
+                                _unit_k = item_k.split("(")[1].rstrip(")").strip() if "(" in item_k else "count"
+                                if _unit_k not in _stored_units:
+                                    _stored_units.append(_unit_k)
 
             _unit_opts = ["count", "g", "ml"]
             _unit_labels = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}

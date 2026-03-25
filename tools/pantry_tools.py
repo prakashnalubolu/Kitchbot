@@ -93,37 +93,70 @@ def _alt_transforms_for(item: str, unit_from: str) -> List[dict]:
 # -------------------------- JSON storage -----------------------------
 
 class _PantryDB:
-    """Persists pantry stock in data/pantry.json as { "<item> (<unit>)": qty }."""
+    """
+    Persists pantry stock in data/pantry.json as:
+      { "<item>": { "qty": <number>, "unit": "g|ml", "count": <int> } }
+    Units are only "g" or "ml" — "count" lives in its own field.
+    Internally, self.items stays as the old flat { "<item> (<unit>)": qty }
+    so that all downstream callers (meal_plan_tools, manager_tools) need
+    no changes.
+    """
 
     def __init__(self, path: str = DATA_PATH):
         self.path = path
         self._load()
 
     def _load(self):
-        if os.path.exists(self.path):
-            try:
-                with open(self.path, "r", encoding="utf-8") as f:
-                    self.items: Dict[str, int] = json.load(f)
-                    # normalize keys on load
-                    nitems: Dict[str, int] = {}
-                    for k, v in (self.items or {}).items():
-                        # try to split "<name> (<unit>)"
-                        if "(" in k and k.endswith(")"):
-                            base, unit = k.rsplit("(", 1)
-                            base = base.strip()
-                            unit = unit[:-1]  # drop ")"
-                        else:
-                            base, unit = k, "count"
-                        nitems[_key(base, unit)] = int(v)
-                    self.items = nitems
-            except Exception:
-                self.items = {}
-        else:
+        """Read new nested JSON (or old flat JSON for backward compat) into flat self.items."""
+        self.items: Dict[str, int] = {}
+        if not os.path.exists(self.path):
+            return
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            for item, entry in (raw or {}).items():
+                item = _canon_item(item)
+                if isinstance(entry, dict):
+                    # New nested format: {"qty":..., "unit":..., "count":...}
+                    if "qty" in entry and "unit" in entry:
+                        qty = int(entry.get("qty") or 0)
+                        if qty > 0:
+                            self.items[_key(item, str(entry["unit"]))] = qty
+                    if "count" in entry:
+                        cnt = int(entry.get("count") or 0)
+                        if cnt > 0:
+                            self.items[_key(item, "count")] = cnt
+                elif isinstance(entry, (int, float)):
+                    # Old flat format: key is "item (unit)" or bare "item"
+                    if "(" in item and item.endswith(")"):
+                        base, unit = item.rsplit("(", 1)
+                        base = base.strip(); unit = unit[:-1]
+                    else:
+                        base, unit = item, "count"
+                    qty = int(entry)
+                    if qty > 0:
+                        self.items[_key(base, unit)] = qty
+        except Exception:
             self.items = {}
 
     def _save(self):
+        """Write flat self.items back as new nested JSON format."""
+        nested: Dict[str, dict] = {}
+        for k, qty in self.items.items():
+            if "(" not in k:
+                continue
+            base = k.rsplit("(", 1)[0].strip()
+            unit = k.rsplit("(", 1)[1].rstrip(")")
+            if qty <= 0:
+                continue
+            entry = nested.setdefault(base, {})
+            if unit == "count":
+                entry["count"] = qty
+            else:
+                entry["qty"] = qty
+                entry["unit"] = unit
         with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(self.items, f, indent=2)
+            json.dump(nested, f, indent=2, ensure_ascii=False)
 
     # --- core mutations + mirroring ----------------------------------
 
@@ -250,10 +283,27 @@ class _PantryDB:
     def list(self) -> str:
         if not self.items:
             return "📭 Pantry is empty."
-        # Stable, human-readable
-        lines = []
+        # Group by base item name for clean display
+        grouped: Dict[str, dict] = {}
         for k in sorted(self.items.keys()):
-            lines.append(f"{k}: {self.items[k]}")
+            base = k.rsplit("(", 1)[0].strip() if "(" in k else k
+            unit = k.rsplit("(", 1)[1].rstrip(")") if "(" in k else "count"
+            qty = self.items[k]
+            entry = grouped.setdefault(base, {})
+            if unit == "count":
+                entry["count"] = qty
+            else:
+                entry["qty"] = qty
+                entry["unit"] = unit
+        lines = []
+        for base in sorted(grouped.keys()):
+            e = grouped[base]
+            if "qty" in e and "count" in e:
+                lines.append(f"{base}: {e['count']} pieces ({e['qty']} {e['unit']})")
+            elif "count" in e:
+                lines.append(f"{base}: {e['count']} pieces")
+            else:
+                lines.append(f"{base}: {e['qty']} {e['unit']}")
         return "\n".join(lines)
 
 _db = _PantryDB()
