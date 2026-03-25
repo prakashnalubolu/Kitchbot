@@ -572,6 +572,13 @@ with tab_pantry:
                                 if _unit_k not in _stored_units:
                                     _stored_units.append(_unit_k)
 
+            # Typo check: suggest closest existing item if typed name not found
+            if rem_item.strip() and ok_p and isinstance(p_data, dict) and not _stored_units:
+                import difflib as _dl
+                _close = _dl.get_close_matches(rem_item.strip().lower(), list(p_data.keys()), n=1, cutoff=0.75)
+                if _close:
+                    st.warning(f"**{rem_item.strip()}** not found. Did you mean **{_close[0]}**?")
+
             _unit_opts = ["count", "g", "ml"]
             _unit_labels = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
             _default_idx = _unit_opts.index(_stored_units[0]) if _stored_units and _stored_units[0] in _unit_opts else 0
