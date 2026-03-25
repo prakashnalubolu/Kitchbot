@@ -267,27 +267,6 @@ def _load_alt_hints() -> dict:
 
 ALT_HINTS = _load_alt_hints()
 
-def _pretty_quantity(item: str, unit: str, qty: Any) -> str:
-    try:    q = float(qty)
-    except: return f"{qty} {unit}"
-    name = (item or "").strip().lower()
-    u    = (unit or "").strip().lower()
-    h    = ALT_HINTS.get(name)
-    def _fmt(x: float, suffix: str) -> str:
-        return f"{int(x)} {suffix}" if abs(x - int(x)) < 1e-9 else f"{x:g} {suffix}"
-    if not h: return _fmt(q, u)
-    if u == "g" and h.get("count_to_g"):
-        approx = q / float(h["count_to_g"])
-        label  = (h.get("count_aliases") or ["count"])[-1]
-        return f"{_fmt(q, 'g')} (~{_fmt(round(approx), label)})"
-    if u == "ml" and h.get("count_to_ml"):
-        approx = q / float(h["count_to_ml"])
-        label  = (h.get("count_aliases") or ["count"])[-1]
-        return f"{_fmt(q, 'ml')} (~{_fmt(round(approx), label)})"
-    if h and u in (h.get("count_aliases") or []):
-        if h.get("count_to_g"):  return f"{_fmt(q, u)} (~{_fmt(q * float(h['count_to_g']), 'g')})"
-        if h.get("count_to_ml"): return f"{_fmt(q, u)} (~{_fmt(q * float(h['count_to_ml']), 'ml')})"
-    return _fmt(q, u)
 
 def _parse_pantry_rows(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     rows = []
@@ -664,38 +643,6 @@ with tab_pantry:
                                 "unit": upd_unit,
                             }))
                             st.success(f"✓ {result}")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-
-        # ── Fix duplicate unit entries ─────────────────────────────────────────
-        with st.expander("🔀  Fix duplicate unit entries"):
-            st.caption("Finds items stored under two different units and lets you keep one.")
-            ok_p, p_data = _load_json_ok(PANTRY_PATH)
-            _dupes: Dict[str, List[tuple]] = {}
-            if ok_p and isinstance(p_data, dict):
-                for k, v in p_data.items():
-                    _base = k.split("(")[0].strip().lower()
-                    _dupes.setdefault(_base, []).append((k, v))
-            _dupes = {b: entries for b, entries in _dupes.items() if len(entries) > 1}
-            if not _dupes:
-                st.success("No duplicate entries found — pantry looks clean!")
-            else:
-                for _base, _entries in _dupes.items():
-                    st.markdown(f"**{_base.title()}** is stored under {len(_entries)} units:")
-                    for k, v in _entries:
-                        st.markdown(f"  - `{k}`: {v}")
-                    _keep_opts = [e[0] for e in _entries]
-                    _keep = st.selectbox(f"Keep which entry for {_base}?", _keep_opts,
-                                         key=f"dedup_{_base}")
-                    if st.button(f"Merge — keep {_keep}", key=f"dedup_btn_{_base}",
-                                 use_container_width=True):
-                        try:
-                            for k, _ in _entries:
-                                if k != _keep:
-                                    _uk = k.split("(")[1].rstrip(")").strip() if "(" in k else "count"
-                                    _tool_remove.invoke(json.dumps({"item": _base, "unit": _uk}))
-                            st.success(f"✓ Kept `{_keep}`, removed other entries for {_base}.")
-                            st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
 
