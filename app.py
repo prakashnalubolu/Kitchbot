@@ -697,17 +697,28 @@ with tab_pantry:
 
         # ── Reset pantry ────────────────────────────────────────────────────────
         st.divider()
-        if st.button("🗑️  Reset pantry", use_container_width=True):
-            import json as _json
-            with open(PANTRY_PATH, "w", encoding="utf-8") as _f:
-                _json.dump({}, _f)
-            # reload the in-memory DB too
-            try:
-                from tools.pantry_tools import _db
-                _db._load()
-            except Exception:
-                pass
-            st.success("Pantry cleared.")
+        if not ss.get("_confirm_reset_pantry"):
+            if st.button("🗑️  Reset pantry", use_container_width=True):
+                ss["_confirm_reset_pantry"] = True
+                st.rerun()
+        else:
+            st.warning("This will delete all pantry items permanently. Are you sure?")
+            _c1, _c2 = st.columns(2)
+            if _c1.button("Yes, reset", type="primary", use_container_width=True, key="confirm_reset_pantry_yes"):
+                import json as _json
+                with open(PANTRY_PATH, "w", encoding="utf-8") as _f:
+                    _json.dump({}, _f)
+                try:
+                    from tools.pantry_tools import _db
+                    _db._load()
+                except Exception:
+                    pass
+                ss["_confirm_reset_pantry"] = False
+                st.success("Pantry cleared.")
+                st.rerun()
+            if _c2.button("Cancel", use_container_width=True, key="confirm_reset_pantry_no"):
+                ss["_confirm_reset_pantry"] = False
+                st.rerun()
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -945,21 +956,32 @@ with tab_plan:
 
         # ── Reset meal plan ────────────────────────────────────────────────────
         st.divider()
-        if st.button("↺  Reset meal plan", use_container_width=True, key="reset_plan_btn"):
-            try:
-                planner_memory.memories.clear()
-                planner_memory.memories["constraints"] = dict(PLANNER_DEFAULTS)
-            except Exception:
-                pass
-            try:
-                if slot_memory:
-                    slot_memory.memories.clear()
-            except Exception:
-                pass
-            ss["cuisine_autofocus"] = ""
-            ss["show_shopping_list"] = False
-            st.success("Meal plan cleared.")
-            st.rerun()
+        if not ss.get("_confirm_reset_plan"):
+            if st.button("↺  Reset meal plan", use_container_width=True, key="reset_plan_btn"):
+                ss["_confirm_reset_plan"] = True
+                st.rerun()
+        else:
+            st.warning("This will clear your entire meal plan. Are you sure?")
+            _c1, _c2 = st.columns(2)
+            if _c1.button("Yes, reset", type="primary", use_container_width=True, key="confirm_reset_plan_yes"):
+                try:
+                    planner_memory.memories.clear()
+                    planner_memory.memories["constraints"] = dict(PLANNER_DEFAULTS)
+                except Exception:
+                    pass
+                try:
+                    if slot_memory:
+                        slot_memory.memories.clear()
+                except Exception:
+                    pass
+                ss["cuisine_autofocus"] = ""
+                ss["show_shopping_list"] = False
+                ss["_confirm_reset_plan"] = False
+                st.success("Meal plan cleared.")
+                st.rerun()
+            if _c2.button("Cancel", use_container_width=True, key="confirm_reset_plan_no"):
+                ss["_confirm_reset_plan"] = False
+                st.rerun()
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1023,17 +1045,28 @@ with tab_chat:
 
     # ── Reset chat ─────────────────────────────────────────────────────────────
     if ss["messages_kitchen"]:
-        if st.button("↺  Reset chat", key="reset_chat_btn"):
-            ss["messages_kitchen"].clear()
-            ss["events"].clear()
-            ss["focus_msg_idx"] = None
-            ss["_thinking"] = False
-            ss["_pending_prompt"] = ""
-            try:
-                _agent_chat_memory.clear()
-            except Exception:
-                pass
-            st.rerun()
+        if not ss.get("_confirm_reset_chat"):
+            if st.button("↺  Reset chat", key="reset_chat_btn"):
+                ss["_confirm_reset_chat"] = True
+                st.rerun()
+        else:
+            st.warning("This will clear the entire conversation. Are you sure?")
+            _c1, _c2 = st.columns(2)
+            if _c1.button("Yes, reset", type="primary", use_container_width=True, key="confirm_reset_chat_yes"):
+                ss["messages_kitchen"].clear()
+                ss["events"].clear()
+                ss["focus_msg_idx"] = None
+                ss["_thinking"] = False
+                ss["_pending_prompt"] = ""
+                ss["_confirm_reset_chat"] = False
+                try:
+                    _agent_chat_memory.clear()
+                except Exception:
+                    pass
+                st.rerun()
+            if _c2.button("Cancel", use_container_width=True, key="confirm_reset_chat_no"):
+                ss["_confirm_reset_chat"] = False
+                st.rerun()
 
     # ── Chat input — always at the bottom
     prompt = st.chat_input("Ask KitchBot anything — pantry, recipes, meal plans…")
