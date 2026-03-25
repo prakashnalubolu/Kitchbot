@@ -498,7 +498,11 @@ with tab_pantry:
                 _typed = add_item.strip().lower()
                 _close = _dl.get_close_matches(_typed, _existing, n=1, cutoff=0.75)
                 if _close and _close[0] != _typed:
-                    st.warning(f"Did you mean **{_close[0]}**? That item already exists in your pantry.")
+                    _tw1, _tw2 = st.columns([3, 1])
+                    _tw1.warning(f"Did you mean **{_close[0]}**? That item already exists.")
+                    if _tw2.button(f"Use '{_close[0]}'", key="add_typo_fix", use_container_width=True):
+                        ss[f"add_item_{_add_key}"] = _close[0]
+                        st.rerun()
 
             _unit_opts = ["count", "g", "ml"]
             _unit_labels_add = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
@@ -577,7 +581,11 @@ with tab_pantry:
                 import difflib as _dl
                 _close = _dl.get_close_matches(rem_item.strip().lower(), list(p_data.keys()), n=1, cutoff=0.75)
                 if _close:
-                    st.warning(f"**{rem_item.strip()}** not found. Did you mean **{_close[0]}**?")
+                    _rw1, _rw2 = st.columns([3, 1])
+                    _rw1.warning(f"**{rem_item.strip()}** not found. Did you mean **{_close[0]}**?")
+                    if _rw2.button(f"Use '{_close[0]}'", key="rem_typo_fix", use_container_width=True):
+                        ss["rem_item"] = _close[0]
+                        st.rerun()
 
             _unit_opts = ["count", "g", "ml"]
             _unit_labels = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
