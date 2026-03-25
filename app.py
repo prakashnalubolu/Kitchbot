@@ -15,7 +15,6 @@ from tools.meal_plan_tools import (
 from tools.pantry_tools import (
     add_to_pantry as _tool_add,
     remove_from_pantry as _tool_remove,
-    update_pantry as _tool_update,
 )
 
 if "constraints" not in planner_memory.memories:
@@ -618,31 +617,6 @@ with tab_pantry:
                                 # omit "quantity" key → tool removes entire entry
                                 _tool_remove.invoke(json.dumps({"item": _item_l, "unit": _u}))
                             st.success(f"✓ Removed all **{_item_l}** from your pantry.")
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-
-        # ── Update / set exact quantity ───────────────────────────────────────
-        with st.expander("✏️  Update quantity"):
-            with st.form("pantry_update_form", clear_on_submit=True):
-                upd_item = st.text_input("Item name", key="upd_item")
-                u1, u2, u3 = st.columns([1.2, 1, 1])
-                upd_qty  = u1.number_input("New quantity", min_value=0.0, value=1.0,
-                                           step=0.5, key="upd_qty")
-                upd_unit = u2.selectbox("Unit", ["count", "g", "ml"], key="upd_unit")
-                upd_sub  = u3.form_submit_button("Update", type="primary",
-                                                  use_container_width=True)
-            if upd_sub:
-                if not upd_item.strip():
-                    st.warning("Enter an item name.")
-                else:
-                    with st.spinner("Updating…"):
-                        try:
-                            result = _tool_update.invoke(json.dumps({
-                                "item": upd_item.strip().lower(),
-                                "quantity": max(0, round(upd_qty)),
-                                "unit": upd_unit,
-                            }))
-                            st.success(f"✓ {result}")
                         except Exception as e:
                             st.error(f"Error: {e}")
 
