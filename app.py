@@ -491,6 +491,15 @@ with tab_pantry:
                                 if _uk not in _add_stored:
                                     _add_stored.append(_uk)
 
+            # Typo check: warn if very close to an existing item name
+            if add_item.strip() and ok_p and isinstance(p_data, dict):
+                import difflib as _dl
+                _existing = list(p_data.keys())
+                _typed = add_item.strip().lower()
+                _close = _dl.get_close_matches(_typed, _existing, n=1, cutoff=0.75)
+                if _close and _close[0] != _typed:
+                    st.warning(f"Did you mean **{_close[0]}**? That item already exists in your pantry.")
+
             _unit_opts = ["count", "g", "ml"]
             _unit_labels_add = {"g": "grams (g)", "ml": "millilitres (ml)", "count": "count (whole pieces)"}
             _add_default = _unit_opts.index(_add_stored[0]) if _add_stored and _add_stored[0] in _unit_opts else 0

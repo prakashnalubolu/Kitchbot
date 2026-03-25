@@ -4,19 +4,14 @@
     "unit": "g"
   },
   "cardamom": {
-    "qty": 200,
+    "qty": 220,
     "unit": "g"
   },
   "carrot": {
-    "count": 27
-  },
-  "chicken": {
-    "qty": 2000,
-    "unit": "g",
-    "count": 25
+    "count": 23
   },
   "chana dal": {
-    "qty": 600,
+    "qty": 500,
     "unit": "g"
   },
   "chilli": {
@@ -64,9 +59,9 @@
     "count": 15
   },
   "egg": {
-    "count": 12,
     "qty": 660,
-    "unit": "g"
+    "unit": "g",
+    "count": 12
   },
   "fish sauce": {
     "qty": 100,
@@ -120,9 +115,9 @@
     "unit": "g"
   },
   "onion": {
-    "count": 13,
     "qty": 1300,
-    "unit": "g"
+    "unit": "g",
+    "count": 13
   },
   "paneer": {
     "qty": 1000,
@@ -133,9 +128,9 @@
     "unit": "g"
   },
   "potato": {
-    "count": 10,
     "qty": 1500,
-    "unit": "g"
+    "unit": "g",
+    "count": 10
   },
   "red chili powder": {
     "qty": 100,
@@ -161,9 +156,9 @@
     "unit": "g"
   },
   "tomato": {
-    "count": 12,
     "qty": 1200,
-    "unit": "g"
+    "unit": "g",
+    "count": 12
   },
   "toor dal": {
     "qty": 500,
@@ -189,8 +184,8 @@
     "qty": 500,
     "unit": "g"
   },
-  "ground chicken": {
-    "qty": 750,
+  "chicken": {
+    "qty": 500,
     "unit": "g"
   }
 }

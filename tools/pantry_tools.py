@@ -181,23 +181,28 @@ class _PantryDB:
             self.items[k] = int(qty)
 
     def _mirror_delta(self, item: str, unit_from: str, delta: int) -> None:
-        """When we add/remove a delta in (item, unit_from), apply configured delta in every mapped 'to' unit."""
+        """When we add/remove a delta in (item, unit_from), apply configured delta in every mapped 'to' unit.
+        Only mirrors if the target unit is already being tracked — avoids creating a partial entry."""
         if delta == 0:
             return
         for rule in _alt_transforms_for(item, unit_from):
             unit_to = _norm_unit(rule.get("to"))
+            if _key(item, unit_to) not in self.items:
+                continue  # don't create a new unit entry from a partial delta
             factor  = float(rule.get("factor", 1))
-            step    = rule.get("round")  # can be None
-            # compute signed delta in target unit
+            step    = rule.get("round")
             raw = delta * factor
             d_to = _round_to_step(raw, step)
             if d_to != 0:
                 self._bump(item, unit_to, d_to)
 
     def _mirror_set(self, item: str, unit_from: str, qty: int) -> None:
-        """When we set (item, unit_from) exactly to qty, overwrite target units with transformed qty."""
+        """When we set (item, unit_from) exactly to qty, overwrite target units with transformed qty.
+        Only mirrors if the target unit is already being tracked."""
         for rule in _alt_transforms_for(item, unit_from):
             unit_to = _norm_unit(rule.get("to"))
+            if _key(item, unit_to) not in self.items:
+                continue
             factor  = float(rule.get("factor", 1))
             step    = rule.get("round")
             raw = qty * factor
