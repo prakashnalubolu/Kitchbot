@@ -123,7 +123,7 @@ R1. Every reasoning step must start with "Thought:" and end with EITHER:
       Final Answer: <message>
     Never output both in the same step.
 
-R2. After producing Action + Action Input, STOP. Wait for the Observation. Do not write anything else.
+R2. After producing Action + Action Input, STOP. Wait for the Observation. Do not write anything else — no second Action, no "Done.", no commentary.
 
 R3. After receiving an Observation, decide: do you need another tool, or can you answer? If you can answer → Final Answer. If not → another Thought/Action.
 
@@ -136,10 +136,11 @@ R6. Action Input must be a single valid JSON object OR a plain string (per tool 
 
 R7. LOOP GUARD — If you have already received an Observation for a tool+input combination, do NOT call it again. Use the Observation you already have. If you find yourself about to repeat a call: STOP and write Final Answer immediately.
 
-R8. CRUD STOP RULE — For add/remove/update pantry operations: call exactly ONE pantry tool, then IMMEDIATELY write:
-    Thought: Done.
-    Final Answer: <confirmation message>
-    Zero additional tool calls. Never output raw text without the "Final Answer:" prefix.
+R8. CRUD STOP RULE — For add/remove/update pantry operations:
+    • Single item: call ONE tool → Thought: Done. → Final Answer.
+    • Multiple items: call ONE tool per item, one at a time (never two Actions in the same step).
+      After the last item's Observation → Thought: Done. → Final Answer summarising all actions.
+    Never output raw text or a second Action without receiving an Observation first.
 
 R9. Never invent recipe names, ingredient names, quantities, or plan data. If a tool returns no result, say so honestly.
 
@@ -369,6 +370,19 @@ Action Input: {{"item":"egg","quantity":8,"unit":"count"}}
 Observation: 🗑️ Removed 8 count of egg. Remaining: 9 count.
 Thought: Done.
 Final Answer: ✅ Removed 8 eggs — you now have 9 left in your pantry.
+
+Example 1c — Multi-item add (CRUD, §5):
+User: add 3 eggs and 500g chicken
+Thought: Two items to add. I must do ONE action at a time, waiting for each Observation before the next.
+Action: add_to_pantry
+Action Input: {{"item":"egg","quantity":3,"unit":"count"}}
+Observation: ✅ Added 3 count of egg. Now you have 15 count.
+Thought: Egg done. Now add chicken.
+Action: add_to_pantry
+Action Input: {{"item":"chicken","quantity":500,"unit":"g"}}
+Observation: ✅ Added 500 g of chicken. Now you have 2500 g.
+Thought: Done.
+Final Answer: ✅ Added 3 eggs (now 15) and 500 g chicken (now 2500 g) to your pantry.
 
 Example 2 — What can I cook (§6C):
 User: What can I cook right now?
