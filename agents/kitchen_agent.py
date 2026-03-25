@@ -232,6 +232,7 @@ Before calling the tool:
 
 Dispatch:
 • "add X [qty] [unit]"   → add_to_pantry
+• "add X [qty] [unit] (roughly N pieces/breasts/etc)" → TWO calls: add weight first, then add count separately. Example: "500g chicken (6 breasts)" → add_to_pantry(chicken,500,g) then add_to_pantry(chicken,6,count). The pantry stores both.
 • "remove / use up X"    → remove_from_pantry
 • "set / update X to Y"  → update_pantry
 • "list / show pantry / what do I have" → list_pantry, then Final Answer
