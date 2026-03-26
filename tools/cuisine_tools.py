@@ -282,7 +282,7 @@ def find_recipes_by_items(
     cuisine: Optional[str] = None,
     max_time: Optional[int] = None,
     diet: Optional[str] = None,
-    k: int = 5,
+    k: int = 10,
 ) -> str:
     """
     Suggest up to *k* recipes that best match the given *items* list.
