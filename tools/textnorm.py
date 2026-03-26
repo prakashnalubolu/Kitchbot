@@ -56,6 +56,35 @@ def _singular_fallback(word: str) -> str:
     return w
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Pre-canonical phrase aliases (applied before spaCy; fixes spaCy mis-parses)
+# ─────────────────────────────────────────────────────────────────────────────
+# "garlic clove" → spaCy picks "clove" as head (drops "garlic") — wrong
+# "garlic cloves" → spaCy correctly picks "garlic" but alias makes it explicit
+_PHRASE_ALIASES: dict[str, str] = {
+    # garlic forms — spaCy mis-parses "garlic clove" (singular) → "clove"
+    "garlic clove":  "garlic",
+    "garlic cloves": "garlic",
+    # leaf plurals — strip to canonical singular so pantry "bay leaf" matches recipe "bay leaves"
+    "bay leaves":         "bay leaf",
+    "curry leaves":       "curry leaf",
+    "kaffir lime leaves": "kaffir lime leaf",
+    # plant-part suffixes where the first word IS the pantry ingredient
+    "cardamom pod":  "cardamom",
+    "cardamom pods": "cardamom",
+    "cashew nut":    "cashew",
+    "cashew nuts":   "cashew",
+    # multi-word phrase that collapses to wrong single word
+    "corn on the cob": "corn",
+    "bottle gourd":    "bottle gourd",   # "bottle" not amod-kept; force explicit
+    # dairy identity — KEEP_AMOD doesn't catch this (spaCy tags as compound not amod)
+    "condensed milk": "condensed milk",
+    # paste forms — keep identity so "garlic paste" ≠ "ginger paste" ≠ "paste"
+    "garlic paste":  "garlic paste",
+    "ginger paste":  "ginger paste",
+    "tomato paste":  "tomato paste",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Spelling/orthography folds (tiny, surgical; NOT a big alias map)
 # ─────────────────────────────────────────────────────────────────────────────
 # Normalize chili/chile/chilli/chillies → chili
@@ -94,9 +123,19 @@ DROP_DESCRIPTORS = {
 # Identity adjectives we DO keep when attached to the head (amod)
 # e.g., thai basil, spring onion, green chili, white fish, red chili
 KEEP_AMOD = {
-    "thai", "indian", "chinese", "italian",  # cuisine/nationality (expand later if needed)
+    "thai", "indian", "chinese", "italian",  # cuisine/nationality
     "spring",
     "green", "red", "yellow", "white", "black", "brown", "purple",
+    # flavor-identity oil qualifiers — "sesame oil"/"olive oil" must not collapse to "oil"
+    "sesame", "olive", "chili",
+    # dairy/grain identity — "condensed milk" ≠ "milk", "glutinous rice" ≠ "rice"
+    "condensed", "glutinous",
+    # vinegar identity — "balsamic vinegar" must not collapse to "vinegar"
+    "balsamic",
+    # vegetable identity — "bitter gourd" ≠ "bottle gourd" ≠ generic "gourd"
+    "bitter",
+    # cheese identity — "feta cheese" must not collapse to "cheese"
+    "feta",
 }
 # Identity adjectives that depend on the head noun
 HEAD_SPECIFIC_KEEP = {
@@ -142,6 +181,8 @@ def canonical_key(name: str) -> str:
     s = _preclean(name)
     if not s:
         return s
+    if s in _PHRASE_ALIASES:
+        return _PHRASE_ALIASES[s]
 
     _lazy_load_spacy()
     if _NLP is not None:

@@ -1,191 +1,47 @@
 {
-  "besan": {
+  "paneer": {
     "qty": 500,
     "unit": "g"
   },
-  "cardamom": {
-    "qty": 220,
-    "unit": "g"
-  },
-  "carrot": {
-    "count": 23
-  },
-  "chana dal": {
+  "spinach": {
     "qty": 500,
     "unit": "g"
-  },
-  "chilli": {
-    "count": 30
-  },
-  "cinnamon": {
-    "qty": 230,
-    "unit": "g"
-  },
-  "clove": {
-    "qty": 200,
-    "unit": "g"
-  },
-  "coffee": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "cooked rice": {
-    "qty": 1000,
-    "unit": "g"
-  },
-  "coriander leaves": {
-    "count": 100
-  },
-  "coriander powder": {
-    "qty": 200,
-    "unit": "g"
-  },
-  "cream": {
-    "qty": 140,
-    "unit": "ml"
-  },
-  "cumin": {
-    "qty": 100,
-    "unit": "g"
-  },
-  "curd": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "curry leaves": {
-    "count": 50
-  },
-  "dried chilli": {
-    "count": 15
-  },
-  "egg": {
-    "qty": 660,
-    "unit": "g",
-    "count": 12
-  },
-  "fish sauce": {
-    "qty": 100,
-    "unit": "ml"
-  },
-  "garam masala": {
-    "qty": 50,
-    "unit": "g"
-  },
-  "garlic": {
-    "count": 12
   },
   "ghee": {
-    "qty": 250,
-    "unit": "g"
+    "qty": 150,
+    "unit": "ml"
+  },
+  "onion": {
+    "count": 12
+  },
+  "tomato": {
+    "count": 8
+  },
+  "garlic": {
+    "count": 6
   },
   "ginger": {
-    "qty": 140,
-    "unit": "g"
-  },
-  "green bean": {
-    "qty": 200,
+    "qty": 150,
     "unit": "g"
   },
   "green chilli": {
-    "count": 2
-  },
-  "jaggery": {
-    "qty": 200,
-    "unit": "g"
-  },
-  "lemon": {
-    "count": 6
-  },
-  "lemon grass": {
-    "count": 2
-  },
-  "lime": {
-    "count": 2
-  },
-  "moong dal": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "mustard seed": {
-    "qty": 50,
-    "unit": "g"
-  },
-  "noodle": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "onion": {
-    "qty": 1300,
-    "unit": "g",
-    "count": 13
-  },
-  "paneer": {
-    "qty": 1000,
-    "unit": "g"
-  },
-  "peanut": {
-    "qty": 200,
-    "unit": "g"
-  },
-  "potato": {
-    "qty": 1500,
-    "unit": "g",
-    "count": 10
-  },
-  "red chili powder": {
     "qty": 100,
     "unit": "g"
   },
-  "rice": {
-    "qty": 1600,
+  "cumin seed": {
+    "qty": 150,
     "unit": "g"
   },
-  "soy sauce": {
-    "qty": 130,
-    "unit": "ml"
-  },
-  "spring onion": {
-    "count": 13
-  },
-  "tamarind": {
-    "qty": 77,
-    "unit": "g"
-  },
-  "thai basil": {
-    "qty": 110,
-    "unit": "g"
-  },
-  "tomato": {
-    "qty": 1200,
-    "unit": "g",
-    "count": 12
-  },
-  "toor dal": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "turmeric": {
-    "qty": 50,
-    "unit": "g"
-  },
-  "urad dal": {
+  "coriander powder": {
     "qty": 250,
     "unit": "g"
   },
-  "vegetable oil": {
-    "qty": 970,
+  "garam masala": {
+    "qty": 150,
+    "unit": "g"
+  },
+  "cream": {
+    "qty": 150,
     "unit": "ml"
-  },
-  "wheat flour": {
-    "qty": 1500,
-    "unit": "g"
-  },
-  "white fish": {
-    "qty": 500,
-    "unit": "g"
-  },
-  "chicken": {
-    "qty": 500,
-    "unit": "g"
   }
 }

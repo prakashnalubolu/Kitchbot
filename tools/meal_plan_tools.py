@@ -138,53 +138,6 @@ def _recipe_eligible_by_filters(rec: Dict[str, Any], c: Dict[str, Any],
             return False
     return True
 
-def _full_coverage_and_usage(rec: Dict[str, Any], shadow: Dict[str, int]) -> tuple[bool, List[str]]:
-    """
-    Return (ok, usage_lines). ok=True iff every ingredient can be met from shadow pantry
-    with exact canonical (name,unit) key. usage_lines are human-readable like '200 g chicken'.
-    """
-    usage: List[str] = []
-    for ing in rec.get("ingredients", []):
-        item = (ing.get("item") or "").strip()
-        qty  = int(ing.get("quantity") or 0)
-        unit = _normalize_unit(ing.get("unit") or "count")
-        if not item or qty <= 0:
-            continue
-        name_c, unit_n = _canon_name_unit(item, unit)
-        key = f"{name_c} ({unit_n})"
-        have = int(shadow.get(key, 0))
-        if have < qty:
-            return False, []
-        usage.append(f"{qty} {unit_n} {name_c}")
-    return True, usage
-
-def _can_fulfill_strict(rec: Dict[str, Any], shadow: Dict[str, int]) -> bool:
-    for ing in rec.get("ingredients", []):
-        item = (ing.get("item") or "").strip()
-        qty  = int(ing.get("quantity") or 0)
-        unit = _normalize_unit(ing.get("unit") or "count")
-        if not item or qty <= 0:
-            continue
-        name_c, unit_n = _canon_name_unit(item, unit)
-        key = f"{name_c} ({unit_n})"
-        if shadow.get(key, 0) < qty:
-            return False
-    return True
-
-def _apply_deduction(rec: Dict[str, Any], shadow: Dict[str, int]) -> None:
-    """
-    Subtract each ingredient qty from the shadow pantry and return usage lines
-    like '200 g chicken' for logging.
-    """
-    for ing in rec.get("ingredients", []):
-        item = (ing.get("item") or "").strip()
-        qty  = int(ing.get("quantity") or 0)
-        unit = _normalize_unit(ing.get("unit") or "count")
-        if not item or qty <= 0:
-            continue
-        name_c, unit_n = _canon_name_unit(item, unit)
-        key = f"{name_c} ({unit_n})"
-        shadow[key] = max(0, int(shadow.get(key, 0)) - qty)
 
 
 
@@ -533,30 +486,9 @@ def update_plan(payload: Dict[str, Any] | str | None = None) -> str:
     return f"Set {day} » {meal} to {recipe_name}."
 
 ##############################################################################
-# 3 · missing_ingredients – import with fallback
+# 3 · missing_ingredients
 ##############################################################################
-try:
-    # If your manager_tools defines this @tool, reuse it.
-    from tools.manager_tools import missing_ingredients  # type: ignore
-except Exception:
-    # Fallback: quick local implementation without quantities
-    @tool
-    def missing_ingredients(dish: str) -> str:
-        """Tell the user which ingredients for *dish* are not in their pantry (simple fallback)."""
-        recipe = _load_recipe_by_name(dish)
-        if not recipe:
-            return f"⚠️ Recipe '{dish}' not found."
-
-        pantry_names = {_normalise(k.split("(")[0]) for k in _load_pantry().keys()}
-        need = {_normalise(ing.get("item","")) for ing in recipe.get("ingredients", []) if ing.get("item")}
-        missing = sorted(n for n in need if n and n not in pantry_names)
-
-        if not missing:
-            return f"You already have every ingredient for {dish.title()}!"
-        if len(missing) == 1:
-            return f"You'll still need {missing[0]} to cook {dish.title()}."
-        *rest, last = missing
-        return f"You'll still need {', '.join(rest)} and {last} to cook {dish.title()}."
+from tools.manager_tools import missing_ingredients  # noqa: E402
 
 ##############################################################################
 # 4 · Pantry helpers (normalize names/units, load/save)

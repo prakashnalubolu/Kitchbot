@@ -4,6 +4,7 @@ import os, json, re, datetime
 from typing import Any, Dict, List, Tuple
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as _components
 
 from tools.meal_plan_tools import DEFAULT_CONSTRAINTS as PLANNER_DEFAULTS
 from agents.kitchen_agent import chat as kitchen_chat, chat_memory as _agent_chat_memory
@@ -199,8 +200,51 @@ hr { border-color: #F3F4F6 !important; margin: 16px 0 !important; }
     background: white !important;
 }
 details summary { font-weight: 600 !important; color: #374151 !important; }
+
+/* ── Typo suggestion hyperlink buttons ── */
+[data-testid="stMarkdown"]:has(p.typo-hint) + [data-testid="stButton"] button,
+[data-testid="stMarkdown"]:has(p.typo-hint) + [data-testid="stButton"] button:focus,
+[data-testid="stMarkdown"]:has(p.typo-hint) + [data-testid="stButton"] button:active {
+    background-color: transparent !important;
+    background: transparent !important;
+    border: 0 none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    color: #1e88e5 !important;
+    text-decoration: underline !important;
+    cursor: pointer !important;
+    font-size: 0.9em !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 2px !important;
+    line-height: 1.4 !important;
+    outline: none !important;
+}
+[data-testid="stMarkdown"]:has(p.typo-hint) + [data-testid="stButton"] button:hover {
+    color: #1557a0 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: 0 none !important;
+    text-decoration: underline !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
+# Disable browser autocomplete/autofill on all inputs
+_components.html("""
+<script>
+(function() {
+    const doc = window.parent.document;
+    const disable = () => {
+        doc.querySelectorAll('input').forEach(el => {
+            el.setAttribute('autocomplete', 'off');
+        });
+    };
+    disable();
+    new MutationObserver(disable).observe(doc.body, {childList: true, subtree: true});
+})();
+</script>
+""", height=0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Session state
@@ -468,6 +512,8 @@ with tab_pantry:
         # ── Quick Add ─────────────────────────────────────────────────────────
         with st.expander("➕  Add item", expanded=True):
             _add_key = ss.get("_add_form_key", 0)
+            if "_add_item_fill" in ss:
+                ss[f"add_item_{_add_key}"] = ss.pop("_add_item_fill")
             add_item = st.text_input("Item name", placeholder="e.g. chicken, rice, milk…",
                                      key=f"add_item_{_add_key}")
 
@@ -498,10 +544,9 @@ with tab_pantry:
                 _typed = add_item.strip().lower()
                 _close = _dl.get_close_matches(_typed, _existing, n=1, cutoff=0.75)
                 if _close and _close[0] != _typed:
-                    _tw1, _tw2 = st.columns([3, 1])
-                    _tw1.warning(f"Did you mean **{_close[0]}**? That item already exists.")
-                    if _tw2.button(f"Use '{_close[0]}'", key="add_typo_fix", use_container_width=True):
-                        ss[f"add_item_{_add_key}"] = _close[0]
+                    st.markdown(f'<p class="typo-hint">Did you mean <strong>{_close[0]}</strong>? That item already exists.</p>', unsafe_allow_html=True)
+                    if st.button(_close[0], key="add_typo_fix"):
+                        ss["_add_item_fill"] = _close[0]
                         st.rerun()
 
             _unit_opts = ["count", "g", "ml"]
@@ -554,6 +599,8 @@ with tab_pantry:
 
         # ── Remove item ───────────────────────────────────────────────────────
         with st.expander("➖  Remove item"):
+            if "_rem_item_fill" in ss:
+                ss["rem_item"] = ss.pop("_rem_item_fill")
             rem_item = st.text_input("Item name", placeholder="e.g. egg, ground chicken…",
                                      key="rem_item")
 
@@ -581,10 +628,9 @@ with tab_pantry:
                 import difflib as _dl
                 _close = _dl.get_close_matches(rem_item.strip().lower(), list(p_data.keys()), n=1, cutoff=0.75)
                 if _close:
-                    _rw1, _rw2 = st.columns([3, 1])
-                    _rw1.warning(f"**{rem_item.strip()}** not found. Did you mean **{_close[0]}**?")
-                    if _rw2.button(f"Use '{_close[0]}'", key="rem_typo_fix", use_container_width=True):
-                        ss["rem_item"] = _close[0]
+                    st.markdown(f'<p class="typo-hint"><strong>{rem_item.strip()}</strong> not found. Did you mean <strong>{_close[0]}</strong>?</p>', unsafe_allow_html=True)
+                    if st.button(_close[0], key="rem_typo_fix"):
+                        ss["_rem_item_fill"] = _close[0]
                         st.rerun()
 
             _unit_opts = ["count", "g", "ml"]
