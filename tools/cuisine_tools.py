@@ -282,7 +282,7 @@ def find_recipes_by_items(
     cuisine: Optional[str] = None,
     max_time: Optional[int] = None,
     diet: Optional[str] = None,
-    k: int = 10,
+    k: int = 5,
 ) -> str:
     """
     Suggest up to *k* recipes that best match the given *items* list.
@@ -341,8 +341,8 @@ def find_recipes_by_items(
     if not ranked:
         return "📭 No recipes match those items."
 
-    # Sort: 100% coverage first, then more items covered, then quicker, then name
-    ranked.sort(key=lambda t: (not t[0], -t[1], t[2], (t[3].get("name") or "").lower()))
+    # Sort: 100% coverage first, then higher coverage ratio, then quicker, then name
+    ranked.sort(key=lambda t: (not t[0], -t[4], t[2], (t[3].get("name") or "").lower()))
 
     # Optional bias by requested diet (only meaningful for "non-veg" preference)
     def _diet_rank(recipe_diet: str, user_want: Optional[str]) -> int:
@@ -358,7 +358,7 @@ def find_recipes_by_items(
 
     if diet:
         full.sort(key=lambda t: (_diet_rank(t[3].get("diet", ""), diet), t[2], (t[3].get("name") or "").lower()))
-        partial.sort(key=lambda t: (_diet_rank(t[3].get("diet", ""), diet), -t[1], t[2], (t[3].get("name") or "").lower()))
+        partial.sort(key=lambda t: (_diet_rank(t[3].get("diet", ""), diet), -t[4], t[2], (t[3].get("name") or "").lower()))
 
     top = (full + partial)[:k]
 
