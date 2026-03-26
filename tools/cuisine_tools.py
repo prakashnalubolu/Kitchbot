@@ -360,8 +360,7 @@ def find_recipes_by_items(
         full.sort(key=lambda t: (_diet_rank(t[3].get("diet", ""), diet), t[2], (t[3].get("name") or "").lower()))
         partial.sort(key=lambda t: (_diet_rank(t[3].get("diet", ""), diet), -t[1], t[2], (t[3].get("name") or "").lower()))
 
-    bucket = full if full else partial
-    top = bucket[:k]
+    top = (full + partial)[:k]
 
     return "\n".join(
         f"- {t[3]['name'].title()} ({t[3]['cuisine']}) — {round(t[4] * 100):>3}% ingredients covered"
