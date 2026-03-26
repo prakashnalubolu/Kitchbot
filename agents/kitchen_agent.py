@@ -360,7 +360,7 @@ User: Plan 3 days of meals using what I have, Indian only.
 
 Example 5 — Save plan:
 User: Save my plan
-→ Call save_plan({})  ← empty object for auto-name
+→ Call save_plan({{}})  ← empty object for auto-name
 → Respond: "Your plan's saved to `plans/plan_2026-03-22T14-30.json`."
 """
 
