@@ -373,8 +373,8 @@ def _confidence_for(missing_raw: str, base: str) -> float:
 
 @tool
 def suggest_substitutions(
-    dish: str,
-    deficits: List[Dict[str, Any]],
+    dish: Optional[str] = None,
+    deficits: Optional[List[Dict[str, Any]]] = None,
     pantry: Optional[List[Dict[str, Any]]] = None,
     constraints: Optional[Dict[str, Any]] = None,
 ) -> str:
@@ -394,6 +394,7 @@ def suggest_substitutions(
        "reason":"Close variant; roasting approximates dried"}
     ]}
     """
+    deficits = deficits or []
     pantry_list = pantry or []
     allow_prep = bool((constraints or {}).get("allow_prep", True))
 

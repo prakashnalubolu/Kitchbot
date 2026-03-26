@@ -7,6 +7,8 @@ from langchain_core.tools import tool
 from langchain.memory import SimpleMemory
 from tools.cuisine_tools import _load as _load_recipes
 from tools.textnorm import canonical_key as _canon, canonical_and_unit as _canon_and_unit
+from tools import pantry_tools as _pt
+from tools.pantry_tools import get_pantry_items as _get_pantry_items
 
 
 
@@ -101,9 +103,6 @@ def set_constraints(
     })
     nice_mode = "Pantry-first (strict)" if c["mode"] == "pantry-first-strict" else "Freeform"
     return f"OK. Mode: {nice_mode}, repeats: {c['allow_repeats']}, cuisine: {c['cuisine'] or 'any'}, diet: {c['diet'] or 'any'}, max_time: {c['max_time'] or 'any'}."
-
-from tools import pantry_tools as _pt
-from tools.pantry_tools import get_pantry_items as _get_pantry_items
 
 def _canon_name_unit(item: str, unit: str) -> tuple[str, str]:
     return _canon_and_unit(item, unit)
@@ -465,11 +464,6 @@ def update_plan(day: str, meal: str, recipe_name: str, reason: str = "") -> str:
     memory.memories["calc_log"] = calc_log
 
     return f"Set {day} » {meal} to {recipe_name}."
-
-##############################################################################
-# 3 · missing_ingredients
-##############################################################################
-from tools.manager_tools import missing_ingredients  # noqa: E402
 
 ##############################################################################
 # 4 · Pantry helpers (normalize names/units, load/save)
