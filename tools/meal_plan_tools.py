@@ -79,28 +79,26 @@ def _normalize_constraints(upd: Dict[str, Any]) -> Dict[str, Any]:
     return c
 
 @tool
-def get_constraints(_: str | None = None) -> str:
+def get_constraints() -> str:
     """Return the current planning constraints as JSON."""
     return json.dumps(_get_constraints())
 
 @tool
-def set_constraints(payload: Dict[str, Any] | str) -> str:
-    """Update planning constraints (mode, allow_repeats, cuisine, diet, max_time, sub_policy)."""
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except Exception:
-            # allow shorthand like "pantry-first" or "freeform"
-            p = (payload or "").strip().lower()
-            if p in ("pantry-first", "pantry-first-strict", "strict"):
-                payload = {"mode": "pantry-first-strict"}
-            elif p in ("freeform", "user-choice", "personal-choice"):
-                payload = {"mode": "freeform"}
-            else:
-                return "Error: set_constraints expects a JSON object or a known mode keyword."
-    if not isinstance(payload, dict):
-        return "Error: set_constraints expects an object."
-    c = _normalize_constraints(payload)
+def set_constraints(
+    mode: str,
+    allow_repeats: bool = True,
+    cuisine: Optional[str] = None,
+    diet: Optional[str] = None,
+    max_time: Optional[int] = None,
+) -> str:
+    """Update planning constraints. mode: 'pantry-first-strict' or 'freeform'."""
+    c = _normalize_constraints({
+        "mode": mode,
+        "allow_repeats": allow_repeats,
+        "cuisine": cuisine,
+        "diet": diet,
+        "max_time": max_time,
+    })
     nice_mode = "Pantry-first (strict)" if c["mode"] == "pantry-first-strict" else "Freeform"
     return f"OK. Mode: {nice_mode}, repeats: {c['allow_repeats']}, cuisine: {c['cuisine'] or 'any'}, diet: {c['diet'] or 'any'}, max_time: {c['max_time'] or 'any'}."
 
@@ -262,10 +260,16 @@ def _coverable_once_sorted(candidates: List[Dict[str, Any]],
     return coverable
 
 @tool
-def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
+def auto_plan(
+    days: int = 3,
+    meals: Optional[Any] = None,
+    continue_plan: bool = False,
+) -> str:
     """
     Fill Day×Meals according to constraints.
-    payload: {"days": int, "meals": int|[names], "continue": bool?}
+    days: number of days to plan.
+    meals: number of meals per day (int) or list of meal names e.g. ["Breakfast","Lunch","Dinner"].
+    continue_plan: if True, append to the existing plan instead of starting fresh.
 
     Pantry-first (strict):
       • Only recipes fully satisfied by the *canonicalized* shadow pantry.
@@ -280,16 +284,9 @@ def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
     Repeat policy:
       • allow_repeats=False ⇒ avoid consecutive repeats (not global uniqueness).
     """
-    # Parse payload
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload or "{}")
-        except Exception:
-            payload = {}
-    payload = payload or {}
-    days  = int(payload.get("days") or 3)
-    meals = _slot_names(payload.get("meals"))
-    cont  = bool(payload.get("continue") or False)
+    days  = int(days or 3)
+    meals = _slot_names(meals)
+    cont  = bool(continue_plan)
 
     c = _get_constraints()
     plan: Dict[str, Dict[str, str]] = memory.memories.get("plan", {}) if cont else {}
@@ -439,27 +436,11 @@ def auto_plan(payload: Dict[str, Any] | str | None = None) -> str:
 # 2 · update_plan – mutate planner_state (no shadow-pantry simulation)
 ##############################################################################
 @tool
-def update_plan(payload: Dict[str, Any] | str | None = None) -> str:
-    """Write a recipe into the plan for a given slot, and record a calc entry.
+def update_plan(day: str, meal: str, recipe_name: str, reason: str = "") -> str:
+    """Write a recipe into the plan for a given slot.
 
-    Accepts either a dict or a JSON string:
-      {"day":"Day1","meal":"Breakfast","recipe_name":"Palak Paneer", "reason":"top pantry coverage 67%"}
+    day: e.g. "Day1", meal: "Breakfast"|"Lunch"|"Dinner", recipe_name: dish name.
     """
-    # tolerate quoted JSON from the model
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except Exception:
-            return "Error: update_plan expects a JSON object with keys day, meal, recipe_name."
-
-    if not isinstance(payload, dict):
-        return "Error: update_plan payload must be an object."
-
-    day  = payload.get("day") or payload.get("slot", {}).get("day")
-    meal = payload.get("meal") or payload.get("slot", {}).get("meal")
-    recipe_name = payload.get("recipe_name") or payload.get("dish") or payload.get("recipe")
-    reason = payload.get("reason")  # optional human reason
-
     if not (day and meal and recipe_name):
         return "Error: need 'day', 'meal', and 'recipe_name'."
 
@@ -614,7 +595,7 @@ def _format_deficits(deficits: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 @tool
-def get_shopping_list(_: str | None = None) -> str:
+def get_shopping_list() -> str:
     """Return a quantity-aware shopping list computed from the current plan."""
     plan = memory.memories.get("plan", {})
     if not plan:
@@ -625,9 +606,9 @@ def get_shopping_list(_: str | None = None) -> str:
     return _format_deficits(deficits)
 
 @tool
-def save_plan(payload: Dict[str, Any] | str | None = None) -> str:
+def save_plan(file_name: Optional[str] = None) -> str:
     """Persist the current plan (with constraints & shopping list) to /plans.
-    Accepts either {"file_name": "..."} or a plain string name, or None."""
+    Omit file_name for an auto-generated timestamped name."""
     plan        = memory.memories.get("plan", {})
     constraints = memory.memories.get("constraints", {})
     if not plan:
@@ -636,17 +617,6 @@ def save_plan(payload: Dict[str, Any] | str | None = None) -> str:
     # quantity-aware shopping list
     deficits = _quantity_shopping_deficits(plan)
     data = {"constraints": constraints, "plan": plan, "shopping_list": deficits}
-
-    file_name = None
-    if isinstance(payload, dict):
-        file_name = payload.get("file_name")
-    elif isinstance(payload, str):
-        s = payload.strip()
-        try:
-            d = json.loads(s)
-            file_name = d.get("file_name") if isinstance(d, dict) else s
-        except Exception:
-            file_name = s
 
     if not file_name:
         file_name = f"plan_{datetime.datetime.now().strftime('%Y-%m-%dT%H-%M')}"
@@ -668,32 +638,23 @@ def _deduct_one(item: str, qty: int, unit: str) -> None:
     _pt._db.remove(name, int(qty), u)
 
 @tool
-def cook_meal(payload: Dict[str, Any] | str) -> str:
+def cook_meal(
+    dish: Optional[str] = None,
+    day: Optional[str] = None,
+    meal: Optional[str] = None,
+) -> str:
     """
     Mark a meal cooked and subtract ingredients from pantry.
 
-    Accepts either:
-      {"day":"Day1","meal":"Lunch"}   -> look up dish in planner_state["plan"]
-      {"dish":"Palak Paneer"}         -> use dish directly
+    Either provide dish name directly, or provide day+meal to look up from the plan.
     """
-    # Parse payload (allow JSON string)
-    if isinstance(payload, str):
-        try:
-            payload = json.loads(payload)
-        except Exception:
-            payload = {"dish": payload}
-
-    if not isinstance(payload, dict):
-        return "Error: cook_meal expects an object or dish name."
-
     # Resolve the dish name
-    dish = payload.get("dish")
     if not dish:
-        if not (payload.get("day") and payload.get("meal")):
-            return "Error: provide {'dish':name} or {'day':..,'meal':..}."
+        if not (day and meal):
+            return "Error: provide dish name or both day and meal."
         plan = memory.memories.get("plan", {}) or {}
-        day_plan = plan.get(payload["day"], {}) or {}
-        dish = day_plan.get(payload["meal"])
+        day_plan = plan.get(day, {}) or {}
+        dish = day_plan.get(meal)
         if not dish:
             return f"Error: no dish set for {payload['day']} » {payload['meal']}."
 
@@ -733,9 +694,9 @@ def cook_meal(payload: Dict[str, Any] | str) -> str:
 
     # Mark the slot as cooked in the plan (prefix with ✅ for UI)
     plan = memory.memories.get("plan", {})
-    if payload.get("day") and payload.get("meal"):
-        slot_day = payload["day"]
-        slot_meal = payload["meal"]
+    if day and meal:
+        slot_day = day
+        slot_meal = meal
         if plan.get(slot_day, {}).get(slot_meal):
             current = plan[slot_day][slot_meal]
             if not current.startswith("✅"):

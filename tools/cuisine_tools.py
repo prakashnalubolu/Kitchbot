@@ -294,39 +294,21 @@ def _canon(s: str) -> str:
     return canonical_key(s)
 
 @tool
-def find_recipes_by_items(payload: dict | str) -> str:
+def find_recipes_by_items(
+    items: List[str],
+    cuisine: Optional[str] = None,
+    max_time: Optional[int] = None,
+    diet: Optional[str] = None,
+    k: int = 5,
+) -> str:
     """
     Suggest up to *k* recipes that best match the given *items* list.
-
-    Accepts either a dict or a JSON string:
-    {"items":["chicken"], "cuisine":"indian", "max_time": null, "diet": null, "k": 5}
 
     Ranking policy (strict):
     • First, show all recipes whose ingredient set is 100% covered by the pantry items (after canonicalization).
     • If no recipe is 100% covered, show partial matches ranked by: more items covered, then shorter total time, then name.
     """
-    data    = _coerce_payload(payload)
-    items   = data.get("items") or []
-    cuisine = data.get("cuisine")
-    max_time = data.get("max_time")
-    diet    = data.get("diet")
-    k       = int(data.get("k", 5) or 5)
-
-    if isinstance(items, str):
-        s = items.strip()
-        try:
-            data = json.loads(s) if (s.startswith("{") and s.endswith("}")) else {}
-        except Exception:
-            data = {}
-        if isinstance(data, dict):
-            items   = data.get("items", items if isinstance(items, list) else [])
-            cuisine = data.get("cuisine", cuisine)
-            max_time = data.get("max_time", max_time)
-            diet    = data.get("diet", diet)
-            k       = data.get("k", k)
-        else:
-            items = [w.strip() for w in re.split(r"[,;\n]", s) if w.strip()]
-
+    k = int(k or 5)
     items = [s.strip() for s in (items or []) if s and s.strip()]
 
     # ---- load & filter candidates

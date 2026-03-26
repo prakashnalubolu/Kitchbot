@@ -335,39 +335,27 @@ def _parse_payload(payload: str) -> dict:
         raise ValueError(f"Invalid JSON payload: {err}") from err
 
 @tool
-def add_to_pantry(tool_input: str) -> str:
+def add_to_pantry(item: str, quantity: float, unit: str = "count") -> str:
     """Add *quantity* of *item* with the given *unit* (`count`, `g`, or `ml`)."""
-    data = _parse_payload(tool_input)
-    return _db.add(
-        item=data["item"],
-        qty=int(data["quantity"]),
-        unit=data.get("unit", "count"),
-    )
+    return _db.add(item=item, qty=int(quantity), unit=unit)
 
 @tool
-def update_pantry(tool_input: str) -> str:
+def update_pantry(item: str, quantity: float, unit: str = "count") -> str:
     """Set the stock level for *item* and *unit* exactly to *quantity*."""
-    data = _parse_payload(tool_input)
-    return _db.update(
-        item=data["item"],
-        qty=int(data["quantity"]),
-        unit=data.get("unit", "count"),
-    )
+    return _db.update(item=item, qty=int(quantity), unit=unit)
 
 @tool
-def remove_from_pantry(tool_input: str) -> str:
+def remove_from_pantry(item: str, quantity: Optional[float] = None, unit: str = "count") -> str:
     """
     Remove *quantity* of *item* (default all) for the specified *unit*.
 
     • If *quantity* is omitted/null, the entire entry is deleted.
-    • Otherwise only that amount is deducted (mirrors updated accordingly).
+    • Otherwise only that amount is deducted.
     """
-    data = _parse_payload(tool_input)
-    qty = data.get("quantity")
     return _db.remove(
-        item=data["item"],
-        qty=None if qty is None else int(qty),
-        unit=data.get("unit", "count"),
+        item=item,
+        qty=None if quantity is None else int(quantity),
+        unit=unit,
     )
 
 @tool

@@ -385,17 +385,18 @@ def _confidence_for(missing_raw: str, base: str) -> float:
     return 0.70  # default for close base-name matches
 
 @tool
-def suggest_substitutions(payload: dict | str) -> str:
+def suggest_substitutions(
+    dish: str,
+    deficits: List[Dict[str, Any]],
+    pantry: Optional[List[Dict[str, Any]]] = None,
+    constraints: Optional[Dict[str, Any]] = None,
+) -> str:
     """
     Propose substitutions for remaining deficits using the user's pantry.
 
-    Input (dict or JSON string):
-    {
-      "dish": "Kung Pao Chicken",
-      "deficits": [{"item":"dried chili","need_qty":5,"unit":"count"}],
-      "pantry": [{"item":"red chili","qty":12,"unit":"count"}, ...],
-      "constraints": {"allow_prep": true, "max_subs_per_item": 2}
-    }
+    deficits: list of {"item":"dried chili","need_qty":5,"unit":"count"}
+    pantry: optional list of {"item":"red chili","qty":12,"unit":"count"}
+    constraints: optional {"allow_prep": true, "max_subs_per_item": 2}
 
     Output (JSON string):
     {"subs":[
@@ -406,10 +407,8 @@ def suggest_substitutions(payload: dict | str) -> str:
        "reason":"Close variant; roasting approximates dried"}
     ]}
     """
-    data = _coerce_payload(payload)
-    deficits = data.get("deficits") or []
-    pantry_list = data.get("pantry") or []
-    allow_prep = bool((data.get("constraints") or {}).get("allow_prep", True))
+    pantry_list = pantry or []
+    allow_prep = bool((constraints or {}).get("allow_prep", True))
 
     # Build a base-name index for the pantry
     # Prefer the snapshot passed in; fall back to file.

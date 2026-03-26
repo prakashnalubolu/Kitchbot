@@ -133,7 +133,7 @@ Use EXACT keys, no extras:
 • cook_meal:             {{"day":"...","meal":"..."}}  OR  {{"dish":"..."}}
 • set_constraints:       {{"mode":"pantry-first-strict"|"freeform","allow_repeats":<bool>,"cuisine":<str|null>,"diet":<"veg"|"eggtarian"|"non-veg"|null>,"max_time":<int|null>}}
 • get_constraints:       {{}}
-• auto_plan:             {{"days":<int>,"meals":<int|["Breakfast","Lunch","Dinner"]>,"continue":<bool>}}
+• auto_plan:             {{"days":<int>,"meals":<int|["Breakfast","Lunch","Dinner"]>,"continue_plan":<bool>}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION 3 — INTENT ROUTING
@@ -264,7 +264,7 @@ Planning sequence (always in this order):
 
 Rules:
 • Breakfast slots → breakfast recipes only. Lunch/Dinner → non-breakfast only. Handled by the planner.
-• "Continue the plan" → auto_plan with {{"days":N,"continue":true}}.
+• "Continue the plan" → auto_plan with {{"days":N,"continue_plan":true}}.
 • Do NOT call update_plan unless user explicitly requests a manual edit to a specific slot.
 • Do NOT call auto_plan for informational questions — answer from context only.
 • Pantry-first result messaging:
