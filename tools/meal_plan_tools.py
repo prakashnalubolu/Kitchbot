@@ -656,7 +656,7 @@ def cook_meal(
         day_plan = plan.get(day, {}) or {}
         dish = day_plan.get(meal)
         if not dish:
-            return f"Error: no dish set for {payload['day']} » {payload['meal']}."
+            return f"Error: no dish set for {day} » {meal}."
 
     recipe = _load_recipe_by_name(dish)
     if not recipe:

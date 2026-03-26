@@ -38,7 +38,7 @@ def cuisine_load():
 # Page config
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="KitchBot — Your Smart Kitchen Assistant",
+    page_title="KitchBot : Your Smart Kitchen Assistant",
     page_icon="🍳",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -918,7 +918,12 @@ with tab_plan:
             msgs = []
             for upd in pending_updates:
                 try:
-                    msg = update_plan.invoke({"payload": upd})
+                    msg = update_plan.invoke({
+                        "day": upd["day"],
+                        "meal": upd["meal"],
+                        "recipe_name": upd["recipe_name"],
+                        "reason": upd.get("reason", ""),
+                    })
                     plan.setdefault(upd["day"], {})[upd["meal"]] = upd["recipe_name"]
                     planner_memory.memories["plan"] = plan
                 except Exception as e:
@@ -959,7 +964,7 @@ with tab_plan:
                 p = {"dish": ck_dish.strip()} if ck_dish.strip() \
                     else {"day": ck_day.strip(), "meal": ck_meal}
                 try:
-                    st.success(str(cook_meal.invoke({"payload": p})))
+                    st.success(str(cook_meal.invoke(p)))
                 except Exception as e:
                     st.error(f"Error: {e}")
 
@@ -982,7 +987,7 @@ with tab_plan:
                                       key="export_fname")
             if st.button("💾 Export to JSON", use_container_width=True, type="primary"):
                 try:
-                    msg = save_plan.invoke({"payload": file_name.strip() or None})
+                    msg = save_plan.invoke({"file_name": file_name.strip() or ""})
                     st.success(str(msg))
                 except Exception as e:
                     st.error(f"Error: {e}")

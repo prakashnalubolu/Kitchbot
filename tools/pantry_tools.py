@@ -317,22 +317,6 @@ def get_pantry_items() -> Dict[str, int]:
     """Return a copy of the current pantry as { '<item> (<unit>)': qty }."""
     return dict(_db.items)
 
-# -------------------------- tool I/O wrappers ------------------------
-
-def _parse_payload(payload: str) -> dict:
-    """
-    Extract the first valid JSON object from a possibly-noisy string.
-    """
-    try:
-        start = payload.find('{'); end = payload.rfind('}') + 1
-        if start == -1 or end <= start:
-            raise ValueError("No JSON object found.")
-        data = json.loads(payload[start:end])
-        if not isinstance(data, dict):
-            raise ValueError("Payload must decode to a JSON object.")
-        return data
-    except Exception as err:
-        raise ValueError(f"Invalid JSON payload: {err}") from err
 
 @tool
 def add_to_pantry(item: str, quantity: float, unit: str = "count") -> str:

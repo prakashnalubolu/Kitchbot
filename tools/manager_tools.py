@@ -292,19 +292,6 @@ def missing_ingredients(dish: str) -> str:
 
 
 # ---------- Substitution suggester (schema-bound, deterministic heuristics) --
-def _coerce_payload(payload: dict | str) -> dict:
-    if isinstance(payload, dict):
-        return payload
-    s = str(payload or "").strip()
-    try:
-        return json.loads(s)
-    except Exception:
-        # salvage the first {...}
-        a, b = s.find("{"), s.rfind("}") + 1
-        if a >= 0 and b > a:
-            return json.loads(s[a:b])
-        raise ValueError("Invalid JSON payload for suggest_substitutions")
-
 def _aggregate_pantry_by_base(pantry: Dict[str, int]) -> Dict[str, Dict[str, int]]:
     """
     Returns { base_item: {unit: qty, ...}, ... } using canonical base names.

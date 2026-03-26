@@ -102,23 +102,6 @@ def _find(name: str) -> Optional[Dict]:
         return next((r for r in db if _match(r["name"], hit[0])), None)
     return None
 
-def _coerce_payload(payload):
-    if isinstance(payload, dict):
-        return payload
-    s = str(payload or "").strip()
-    import json
-    try:
-        return json.loads(s)
-    except Exception:
-        # salvage the first {...}
-        start, end = s.find("{"), s.rfind("}") + 1
-        if start >= 0 and end > start:
-            cand = s[start:end]
-            if '"' not in cand and "'" in cand:
-                cand = cand.replace("'", '"')
-            return json.loads(cand)
-        raise ValueError(f"Invalid JSON payload: {s[:120]}...")
-
 # ── LangChain tools ────────────────────────────────────────────────────────
 @tool
 def get_recipe(name: str) -> str:
