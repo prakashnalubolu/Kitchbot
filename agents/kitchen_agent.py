@@ -230,12 +230,14 @@ DB context: 200+ authentic home-style recipes across North Indian, South Indian,
   1. Call list_pantry.
   2. Extract ALL item base names from the result (text before "(" on each line). Include every item.
   3. Call find_recipes_by_items ONCE with all pantry items. Do NOT repeat this call.
-  4. Parse coverage percentages. For top 1–2 dishes NOT at 100%, call missing_ingredients once per dish.
-  5. Respond using this format:
+  4. For every dish at 80–99% coverage, call missing_ingredients to get the exact gap.
+     Do NOT skip any 80–99% dish — each one deserves a precise answer.
+  5. Present ALL dishes returned by the tool. Do not drop or skip any dish.
+     Use this format:
      ✅ 100% covered → "You can cook **X** right now!"
      🟡 80–99% covered → "**X** — just need: [missing_ingredients result]"
-     🟠 60–79% covered → "**X** — needs a few things"
-     Skip or briefly mention anything below 60%.
+     🟠 60–79% covered → "**X** — needs: [list items from missing_ingredients]"
+     Skip anything below 60%.
 
 6D — Dish feasibility check ("can I cook X?", "what's missing for X?")
   1. Call missing_ingredients with the dish name.
@@ -342,10 +344,12 @@ User: add 3 eggs and 500g chicken
 Example 2 — What can I cook:
 User: What can I cook right now?
 → Call list_pantry → extract all item names → call find_recipes_by_items once with all items.
-→ For top non-100% dishes, call missing_ingredients once each.
-→ Respond:
+→ Call missing_ingredients for every dish at 80–99%. Present ALL dishes in the result.
+→ Respond (show every dish returned, do not drop any):
 ✅ You can cook **Palak Paneer** right now — everything's in your pantry!
-🟡 **Butter Chicken** — you just need **30 ml cream** to complete it.
+🟡 **Butter Chicken** — just need **30 ml cream**
+🟡 **Shahi Paneer** — just need **50 g cashew nuts**
+🟠 **Dal Tadka** — needs a few things: 200 g toor dal, 5 g turmeric powder
 
 Example 3 — Dish feasibility:
 User: Do I have everything for Dal Tadka?
