@@ -1242,8 +1242,8 @@
       },
       {
         "item": "clove",
-        "quantity": 2,
-        "unit": "count"
+        "quantity": 4,
+        "unit": "g"
       },
       {
         "item": "cinnamon stick",
@@ -1506,7 +1506,7 @@
         "unit": "count"
       },
       {
-        "item": "garlic",
+        "item": "garlic clove",
         "quantity": 4,
         "unit": "count"
       },
@@ -1574,7 +1574,7 @@
         "unit": "g"
       },
       {
-        "item": "garlic",
+        "item": "garlic clove",
         "quantity": 4,
         "unit": "count"
       },
@@ -4459,11 +4459,6 @@
         "item": "pineapple",
         "quantity": 100,
         "unit": "g"
-      },
-      {
-        "item": "capsicum",
-        "quantity": 1,
-        "unit": "count"
       },
       {
         "item": "capsicum",
@@ -9800,8 +9795,8 @@
       },
       {
         "item": "clove",
-        "quantity": 5,
-        "unit": "count"
+        "quantity": 10,
+        "unit": "g"
       },
       {
         "item": "bean sprouts",
@@ -11600,7 +11595,7 @@
         "unit": "ml"
       },
       {
-        "item": "garlic",
+        "item": "garlic clove",
         "quantity": 1,
         "unit": "count"
       },
@@ -12292,9 +12287,9 @@
         "unit": "g"
       },
       {
-        "item": "pinch of salt",
+        "item": "salt",
         "quantity": 1,
-        "unit": "count"
+        "unit": "g"
       }
     ],
     "steps": [
@@ -12722,7 +12717,7 @@
         "unit": "ml"
       },
       {
-        "item": "garlic",
+        "item": "garlic clove",
         "quantity": 2,
         "unit": "count"
       },
