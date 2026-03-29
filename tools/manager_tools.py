@@ -231,9 +231,18 @@ def _is_universal(item: str) -> bool:
     # exact match
     if s in _UNIVERSAL_INGREDIENTS:
         return True
-    # single-token suffix match (e.g. "sea salt" → "salt", "olive oil" → "oil")
+    # suffix match only for single-word items OR plain adjective+base combos
+    # (e.g. "sea salt" → "salt", "olive oil" → "oil")
+    # BUT NOT flavor-qualified compounds like "sesame oil", "fish sauce", "soy sauce"
+    # — those are specialty ingredients, not universal staples.
     tokens = s.split()
     if tokens and tokens[-1] in _UNIVERSAL_INGREDIENTS:
+        if len(tokens) == 1:
+            return True
+        # Multi-word: block if the first word is a known flavor qualifier
+        from tools.cuisine_tools import _is_compound_atomic
+        if _is_compound_atomic(s):
+            return False
         return True
     return False
 
@@ -305,54 +314,147 @@ def _aggregate_pantry_by_base(pantry: Dict[str, int]) -> Dict[str, Dict[str, int
     return out
 
 # Substitution table: (keyword_in_missing, keyword_in_base) -> (prep_note, confidence)
-# Order matters — first match wins.
+# Order matters — first match wins per missing ingredient.
+# kw_miss is matched against the raw ingredient name (lowercase) and its canonical base.
+# kw_base is matched against keys in pantry_by_base (canonical pantry item names).
 _SUB_TABLE: list[tuple[str, str, str, float]] = [
-    # fish / seafood
-    ("fillet",          "fish",     "Cut into boneless fillets; remove skin if present.", 0.84),
-    ("shrimp",          "prawn",    "Use interchangeably; adjust cooking time slightly.",  0.90),
-    ("prawn",           "shrimp",   "Use interchangeably; adjust cooking time slightly.",  0.90),
-    # chili variants
-    ("dried",           "chili",    "Dry-roast fresh chilies 2–3 min to mimic dried heat.", 0.75),
-    ("chili flake",     "chili",    "Crush dried chilies or use 1 tsp flakes per 2 fresh.", 0.80),
-    # dairy
-    ("heavy cream",     "cream",    "Use as-is; any cream works for most sauces.",         0.88),
-    ("double cream",    "cream",    "Use as-is; any cream works for most sauces.",         0.88),
-    ("sour cream",      "yogurt",   "Use plain yogurt; add a squeeze of lemon for tang.",  0.78),
-    ("yogurt",          "cream",    "Use plain yogurt in place of cream in curries.",       0.75),
-    ("butter",          "ghee",     "Use butter instead of ghee; it browns faster.",        0.85),
-    ("ghee",            "butter",   "Clarify butter by skimming foam, or use as-is.",      0.85),
-    # oils
-    ("sesame oil",      "oil",      "Use a neutral oil; add a drop of toasted sesame if available.", 0.65),
-    ("olive oil",       "oil",      "Substitute any neutral cooking oil.",                  0.82),
-    # proteins
-    ("chicken breast",  "chicken",  "Use any chicken cut; adjust cook time accordingly.",  0.90),
-    ("ground beef",     "beef",     "Mince or finely chop beef as substitute.",            0.80),
-    ("ground chicken",  "chicken",  "Mince or finely chop chicken as substitute.",        0.80),
-    ("tofu",            "paneer",   "Use firm tofu instead of paneer; press out moisture.", 0.72),
-    ("paneer",          "tofu",     "Use firm pressed tofu; season with a pinch of salt.", 0.72),
-    # aromatics
-    ("spring onion",    "onion",    "Use regular onion; milder flavor.",                   0.80),
-    ("scallion",        "onion",    "Use regular onion; milder flavor.",                   0.80),
-    ("shallot",         "onion",    "Use 1 medium onion for every 3 shallots.",            0.82),
-    # acids
-    ("lemon juice",     "lime",     "Use lime juice; flavor is slightly more floral.",     0.88),
-    ("lime juice",      "lemon",    "Use lemon juice; very similar acidity.",              0.88),
-    ("rice vinegar",    "vinegar",  "Use white vinegar with a pinch of sugar.",            0.75),
-    # condiments / sauces
-    ("soy sauce",       "tamari",   "Use tamari or coconut aminos as soy-free swap.",      0.82),
-    ("fish sauce",      "soy sauce","Mix soy sauce with a squeeze of lime for umami.",     0.68),
-    ("oyster sauce",    "soy sauce","Mix soy sauce + a pinch of sugar to approximate.",    0.70),
-    # herbs
-    ("cilantro",        "coriander","Same herb — use interchangeably.",                    0.95),
-    ("coriander",       "cilantro", "Same herb — use interchangeably.",                    0.95),
-    ("parsley",         "cilantro", "Milder flavor; add a little lemon zest.",             0.65),
-    ("basil",           "herb",     "Works in most herb roles; slightly sweeter.",         0.70),
-    # starches
-    ("cornstarch",      "flour",    "Use 2 tsp flour per 1 tsp cornstarch for thickening.", 0.78),
-    ("potato starch",   "cornstarch","Use 1:1 as thickener; results may be slightly cloudier.", 0.80),
-    # sugars
-    ("brown sugar",     "sugar",    "Use white sugar + a drop of molasses or maple.",      0.85),
-    ("palm sugar",      "sugar",    "Use brown sugar or jaggery for a similar caramel note.", 0.80),
+    # ── fish / seafood ───────────────────────────────────────────────────────
+    ("fillet",          "fish",      "Cut into boneless fillets; remove skin if present.",         0.84),
+    ("shrimp",          "prawn",     "Use interchangeably; adjust cooking time slightly.",          0.90),
+    ("prawn",           "shrimp",    "Use interchangeably; adjust cooking time slightly.",          0.90),
+    ("salmon",          "tuna",      "Use tuna; richer flavour — reduce added oil slightly.",       0.75),
+    ("tuna",            "salmon",    "Use salmon; fattier result — reduce added oil slightly.",     0.75),
+    ("anchovy",         "soy sauce", "Add ½ tsp soy sauce per anchovy fillet for umami depth.",    0.65),
+    ("crab",            "shrimp",    "Use shrimp instead; chop finely for a similar texture.",     0.72),
+    # ── chili / spice variants ───────────────────────────────────────────────
+    ("dried",           "chili",     "Dry-roast fresh chilies 2–3 min to mimic dried heat.",       0.75),
+    ("chili flake",     "chili",     "Crush dried chilies or use 1 tsp flakes per 2 fresh.",       0.80),
+    ("cayenne",         "chili",     "Use ground chili powder; adjust heat level to taste.",       0.82),
+    ("paprika",         "chili",     "Use mild chili powder; paprika is sweeter and smokier.",     0.70),
+    ("chili powder",    "chili",     "Use ground fresh or dried chili; add a pinch of cumin.",     0.80),
+    # ── dairy ────────────────────────────────────────────────────────────────
+    ("heavy cream",     "cream",     "Use as-is; any cream works for most sauces.",                0.88),
+    ("double cream",    "cream",     "Use as-is; any cream works for most sauces.",                0.88),
+    ("whipping cream",  "cream",     "Use regular cream; whip slightly longer if needed.",         0.88),
+    ("sour cream",      "yogurt",    "Use plain yogurt; add a squeeze of lemon for tang.",         0.78),
+    ("buttermilk",      "yogurt",    "Mix 1 cup yogurt + 1 tbsp lemon juice; use right away.",     0.85),
+    ("cream cheese",    "yogurt",    "Use thick Greek yogurt as a lighter substitute.",            0.72),
+    ("mascarpone",      "cream",     "Use whipped heavy cream; texture won't be as firm.",         0.68),
+    ("ricotta",         "yogurt",    "Use drained Greek yogurt; add a pinch of salt.",             0.72),
+    ("condensed milk",  "cream",     "Reduce cream + sugar on low heat until syrupy.",             0.65),
+    ("yogurt",          "cream",     "Cream works here; yogurt gives more tang and tenderizes better — add lemon juice to compensate.", 0.75),
+    ("butter",          "ghee",      "Use butter instead of ghee; it browns faster.",              0.85),
+    ("ghee",            "butter",    "Clarify butter by skimming foam, or use as-is.",             0.85),
+    ("milk",            "cream",     "Dilute cream with equal water for a lighter result.",        0.72),
+    # ── oils / fats ──────────────────────────────────────────────────────────
+    ("sesame oil",      "oil",       "Use neutral oil; add a few drops of toasted sesame if possible.", 0.65),
+    ("olive oil",       "oil",       "Substitute any neutral cooking oil.",                        0.82),
+    ("coconut oil",     "ghee",      "Use ghee 1:1; suits high-heat cooking well.",               0.82),
+    ("coconut oil",     "butter",    "Use butter 1:1 in baking or sautéing.",                     0.80),
+    ("lard",            "butter",    "Use butter or solid coconut oil as a substitute.",          0.78),
+    # ── proteins — poultry & meat ────────────────────────────────────────────
+    ("chicken breast",  "chicken",   "Use any chicken cut; adjust cook time accordingly.",         0.90),
+    ("ground chicken",  "chicken",   "Mince or finely chop chicken as substitute.",               0.80),
+    ("ground beef",     "beef",      "Mince or finely chop beef as substitute.",                  0.80),
+    ("ground turkey",   "chicken",   "Substitute ground chicken 1:1.",                            0.85),
+    ("turkey",          "chicken",   "Use chicken pieces; adjust cook time slightly.",             0.83),
+    ("lamb",            "beef",      "Use beef; the dish will have a milder flavour.",            0.78),
+    ("pork",            "chicken",   "Use chicken; adjust seasoning for a lighter result.",        0.70),
+    ("duck",            "chicken",   "Use chicken thighs; fattier cuts work best.",               0.72),
+    ("venison",         "beef",      "Substitute lean beef; venison is gamier, so add herbs.",    0.70),
+    # ── proteins — tofu / paneer / eggs ─────────────────────────────────────
+    ("tofu",            "paneer",    "Use firm tofu instead of paneer; press out moisture.",       0.72),
+    ("paneer",          "tofu",      "Use firm pressed tofu; season with a pinch of salt.",       0.72),
+    ("egg white",       "egg",       "Use the whole egg; the result will be slightly richer.",    0.80),
+    # ── legumes ──────────────────────────────────────────────────────────────
+    ("chickpea",        "lentil",    "Use lentils; cook time is shorter — check doneness early.", 0.75),
+    ("lentil",          "chickpea",  "Soak chickpeas overnight; they take longer to cook.",       0.75),
+    ("kidney bean",     "chickpea",  "Use chickpeas 1:1; similar hearty texture.",               0.80),
+    ("black bean",      "kidney",    "Use kidney beans or pinto beans 1:1.",                      0.80),
+    ("pinto bean",      "kidney",    "Use kidney beans 1:1; very similar flavor and texture.",    0.88),
+    ("split pea",       "lentil",    "Use lentils; cooking time is comparable.",                  0.80),
+    # ── aromatics ────────────────────────────────────────────────────────────
+    ("spring onion",    "onion",     "Use regular onion; milder flavor.",                         0.80),
+    ("scallion",        "onion",     "Use regular onion; milder flavor.",                         0.80),
+    ("shallot",         "onion",     "Use 1 medium onion for every 3 shallots.",                  0.82),
+    ("leek",            "onion",     "Use 1 medium onion per leek; leeks are milder.",            0.78),
+    ("chives",          "onion",     "Use finely sliced spring onion greens or regular onion.",   0.80),
+    # ── southeast Asian aromatics ────────────────────────────────────────────
+    ("lemongrass",      "lemon",     "Use 1 tsp lemon zest + a few drops of lemon juice per stalk.", 0.65),
+    ("galangal",        "ginger",    "Use fresh ginger; slightly different sharpness but works well.", 0.72),
+    ("kaffir lime",     "lime",      "Use 1 tsp lime zest per 2 leaves.",                         0.70),
+    ("makrut",          "lime",      "Use 1 tsp lime zest per 2 leaves.",                         0.70),
+    ("tamarind",        "lemon",     "Use 1 tbsp lemon juice + 1 tsp sugar per tbsp tamarind.",  0.70),
+    # ── acids ────────────────────────────────────────────────────────────────
+    ("lemon juice",     "lime",      "Use lime juice; flavor is slightly more floral.",           0.88),
+    ("lime juice",      "lemon",     "Use lemon juice; very similar acidity.",                    0.88),
+    ("rice vinegar",    "vinegar",   "Use white vinegar with a pinch of sugar.",                  0.75),
+    ("white wine",      "vinegar",   "Use 1 tbsp white vinegar + 3 tbsp water per ¼ cup wine.",  0.70),
+    ("red wine",        "vinegar",   "Use 1 tbsp red wine vinegar + 3 tbsp water per ¼ cup.",    0.65),
+    # ── condiments / sauces ──────────────────────────────────────────────────
+    ("soy sauce",       "tamari",    "Use tamari or coconut aminos as a soy-free swap.",          0.82),
+    ("fish sauce",      "soy sauce", "Mix soy sauce + a squeeze of lime for umami.",              0.68),
+    ("oyster sauce",    "soy sauce", "Mix soy sauce + a pinch of sugar to approximate.",          0.70),
+    ("hoisin",          "soy sauce", "Mix soy sauce + peanut butter + a pinch of sugar.",         0.68),
+    ("worcestershire",  "soy sauce", "Use soy sauce + a splash of vinegar for tang.",             0.72),
+    ("miso",            "soy sauce", "Use half the soy sauce quantity; it's saltier and thicker.", 0.70),
+    ("tahini",          "peanut",    "Use peanut butter thinned with a little neutral oil.",      0.78),
+    ("peanut butter",   "tahini",    "Use tahini 1:1 for a sesame-forward flavor.",               0.78),
+    ("tahini",          "sesame",    "Toast sesame seeds and blend with a little oil.",           0.75),
+    ("tomato paste",    "tomato",    "Use 3× the volume of fresh or canned tomato, reduced down.", 0.75),
+    ("sriracha",        "chili",     "Use chili paste or minced fresh chili with a pinch of sugar.", 0.75),
+    ("hot sauce",       "chili",     "Use chili paste or finely minced fresh chili.",             0.78),
+    ("ketchup",         "tomato",    "Use tomato paste + pinch of sugar + splash of vinegar.",    0.72),
+    # ── Asian cooking liquids ────────────────────────────────────────────────
+    ("mirin",           "honey",     "Use 1 tsp honey + 1 tsp rice vinegar per tbsp mirin.",     0.72),
+    ("sake",            "vinegar",   "Use rice vinegar diluted 1:3 with water.",                  0.68),
+    ("shaoxing",        "vinegar",   "Use dry sherry or rice vinegar with a pinch of sugar.",    0.68),
+    ("dashi",           "broth",     "Use chicken or vegetable broth + a dash of soy sauce.",    0.68),
+    # ── herbs ────────────────────────────────────────────────────────────────
+    ("cilantro",        "coriander", "Same herb — use interchangeably.",                          0.95),
+    ("coriander",       "cilantro",  "Same herb — use interchangeably.",                          0.95),
+    ("parsley",         "cilantro",  "Milder flavor; add a little lemon zest for brightness.",   0.65),
+    ("basil",           "herb",      "Works in most herb roles; flavor is slightly sweeter.",     0.70),
+    ("rosemary",        "thyme",     "Use thyme; slightly softer aroma but very close.",          0.80),
+    ("thyme",           "rosemary",  "Use rosemary sparingly; it has a stronger, woodsier flavor.", 0.78),
+    ("oregano",         "thyme",     "Use thyme or marjoram as the closest match.",               0.82),
+    ("sage",            "thyme",     "Use thyme; add a tiny pinch of nutmeg for earthiness.",    0.72),
+    ("dill",            "coriander", "Use fresh coriander; add a squeeze of lemon for brightness.", 0.65),
+    ("mint",            "coriander", "Use fresh coriander in savory dishes; flavor differs.",    0.60),
+    ("bay leaf",        "thyme",     "Use a sprig of thyme; flavor differs but stays aromatic.", 0.60),
+    ("tarragon",        "thyme",     "Use thyme or basil; tarragon is more anise-forward.",      0.65),
+    # ── starches / thickeners ────────────────────────────────────────────────
+    ("cornstarch",      "flour",     "Use 2 tsp flour per 1 tsp cornstarch for thickening.",     0.78),
+    ("potato starch",   "cornstarch","Use 1:1 as thickener; results may be slightly cloudier.",  0.80),
+    ("arrowroot",       "cornstarch","Use cornstarch 1:1; results are very similar.",            0.90),
+    ("bread crumb",     "flour",     "Use seasoned flour or crushed crackers for coating.",      0.72),
+    ("panko",           "flour",     "Use regular breadcrumbs or flour; slightly less crispy.",  0.75),
+    ("rice flour",      "flour",     "Use all-purpose flour; texture will be slightly denser.",  0.75),
+    # ── nuts ─────────────────────────────────────────────────────────────────
+    ("cashew",          "almond",    "Soak almonds 20 min and blend; works well in gravies.",    0.78),
+    ("almond",          "cashew",    "Soak cashews 20 min; they blend into creamier pastes.",   0.78),
+    ("pine nut",        "almond",    "Use slivered almonds or sunflower seeds.",                 0.75),
+    ("walnut",          "almond",    "Use almonds or pecans 1:1 in most recipes.",              0.80),
+    ("pecan",           "walnut",    "Use walnuts 1:1; very similar in flavor and texture.",    0.90),
+    ("pistachio",       "almond",    "Use almonds 1:1; slightly different flavor.",              0.78),
+    ("macadamia",       "cashew",    "Use cashews; soak briefly for a creamier result.",        0.78),
+    # ── coconut products ─────────────────────────────────────────────────────
+    ("coconut cream",   "coconut",   "Use full-fat coconut milk reduced by half over low heat.", 0.85),
+    ("desiccated",      "coconut",   "Toast fresh grated coconut or use shredded coconut.",     0.88),
+    # ── sugars / sweeteners ──────────────────────────────────────────────────
+    ("brown sugar",     "sugar",     "Use white sugar + a drop of molasses or maple syrup.",    0.85),
+    ("palm sugar",      "sugar",     "Use brown sugar or jaggery for a similar caramel note.",  0.80),
+    ("jaggery",         "sugar",     "Use brown sugar 1:1 for a similar caramel depth.",        0.85),
+    ("honey",           "sugar",     "Use ¾ cup sugar per 1 cup honey; reduce liquid by ¼ cup.", 0.78),
+    ("maple syrup",     "honey",     "Use honey 1:1; slightly more intense sweetness.",          0.85),
+    ("agave",           "honey",     "Use honey 1:1; agave is milder and neutral in flavor.",   0.87),
+    ("molasses",        "sugar",     "Use brown sugar; it already contains a little molasses.",  0.75),
+    ("icing sugar",     "sugar",     "Blend regular sugar fine in a blender to approximate.",   0.80),
+    ("vanilla extract", "vanilla",   "Scrape ½ vanilla bean per tsp extract; or use paste.",    0.90),
+    # ── alcohol (cooking) ────────────────────────────────────────────────────
+    ("cooking wine",    "vinegar",   "Use 1 tbsp vinegar + 3 tbsp water or broth per ¼ cup.",   0.68),
+    ("beer",            "broth",     "Use chicken or vegetable broth; add a splash of vinegar.", 0.70),
+    ("rum",             "vanilla",   "Use vanilla extract + a little extra sugar.",              0.60),
 ]
 
 def _prep_note_for(missing_raw: str, base: str) -> str:

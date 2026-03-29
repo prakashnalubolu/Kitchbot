@@ -131,9 +131,9 @@ Use EXACT keys, no extras:
 • get_shopping_list:     {{}}
 • save_plan:             {{"file_name":"<name>"}}  ← omit key entirely for auto-name; never pass null
 • cook_meal:             {{"day":"...","meal":"..."}}  OR  {{"dish":"..."}}
-• set_constraints:       {{"mode":"pantry-first-strict"|"freeform","allow_repeats":<bool>,"cuisine":<str|null>,"diet":<"veg"|"eggtarian"|"non-veg"|null>,"max_time":<int|null>}}
+• set_constraints:       {{"mode":"pantry-preferred"|"pantry-first-strict"|"freeform","allow_repeats":<bool>,"cuisine":<str|null>,"diet":<"veg"|"eggtarian"|"non-veg"|null>,"max_time":<int|null>,"strict_meal_types":<bool>}}
 • get_constraints:       {{}}
-• auto_plan:             {{"days":<int>,"meals":<int|["Breakfast","Lunch","Dinner"]>,"continue_plan":<bool>}}
+• auto_plan:             {{"days":<int>,"meals":["Breakfast","Lunch","Dinner"],"continue_plan":<bool>}}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION 3 — INTENT ROUTING
@@ -252,28 +252,69 @@ DB context: 200+ authentic home-style recipes across North Indian, South Indian,
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION 7 — MEAL PLANNING
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Before doing anything, check: do you know (a) number of days and (b) meals per day?
-• If BOTH known → proceed. If either missing → ask ONE clarifying question. Default offer: "3 days, 3 meals/day (Breakfast, Lunch, Dinner)".
+BEFORE PLANNING — you need two things: days and meal slots.
+  If the user's message clearly states both → proceed immediately, no clarifying questions.
+  Only ask if a piece is genuinely missing:
+  (a) Days — if not stated, ask. If stated (even implicitly: "a week"=7, "few days"=3), use it.
+  (b) Meal slots:
+      • "3 meals" / "breakfast lunch dinner" / "all meals" → ["Breakfast","Lunch","Dinner"]
+      • "2 meals a day" → use ["Lunch","Dinner"] as default, no need to ask
+      • "just dinner" → ["Dinner"]
+      • "breakfast and lunch" → ["Breakfast","Lunch"]
+      • Not mentioned at all → ask once: "Breakfast, Lunch, and Dinner?"
+      • Always pass the EXACT list to auto_plan, e.g. {{"meals":["Lunch","Dinner"]}}
 
-Planning sequence (always in this order):
-  Step 1: Call set_constraints with mode + any filters (cuisine/diet/max_time/allow_repeats).
-          Mode rules:
-          - "cook with what I have" / "pantry-first" / "using my pantry" → "pantry-first-strict"
-          - "plan freely" / "freeform" / "any dishes" → "freeform"
-          - Default if not stated: ask which mode.
-  Step 2: Call auto_plan with {{"days":N,"meals":M}}.
-  Step 3: Respond with mode, plan as a table, and next steps if not all slots filled.
+MODES — three choices, pick the right one:
+  ┌─────────────────────┬─────────────────────────────────────────────────────────────┐
+  │ Mode                │ When to use                                                 │
+  ├─────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ pantry-preferred    │ DEFAULT. "using what I have" / "from my pantry" / "cook     │
+  │                     │ with what I have". Fills from pantry first; anything the    │
+  │                     │ pantry can't cover gets a freeform pick + shopping list.    │
+  ├─────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ pantry-first-strict │ "strictly from pantry" / "no shopping" / "only what I have" │
+  │                     │ 100% pantry only. Unfillable slots are left blank.          │
+  ├─────────────────────┼─────────────────────────────────────────────────────────────┤
+  │ freeform            │ "plan freely" / "any dishes" / "I'll buy what's needed"     │
+  │                     │ Any eligible recipe. Full shopping list covers everything.  │
+  └─────────────────────┴─────────────────────────────────────────────────────────────┘
+  • Not stated → ask ONE question: "Cook with what you have, or plan freely?"
 
-Rules:
-• Breakfast slots → breakfast recipes only. Lunch/Dinner → non-breakfast only. Handled by the planner.
-• "Continue the plan" → auto_plan with {{"days":N,"continue_plan":true}}.
-• Do NOT call update_plan unless user explicitly requests a manual edit to a specific slot.
+MEAL TYPES:
+  • Default (strict_meal_types=false): any recipe can appear in any slot.
+    → Good for people who eat rice/chapati/curry at breakfast.
+  • strict_meal_types=true: breakfast slot → breakfast-tagged recipes only.
+    → Use when user says "proper breakfast dishes" / "breakfast items only at breakfast".
+  • Lunch/Dinner slots ALWAYS exclude breakfast-tagged recipes regardless of setting.
+
+PLANNING SEQUENCE (always in this order):
+  Step 1: Call set_constraints — pass mode + cuisine/diet/max_time/strict_meal_types as needed.
+  Step 2: Call auto_plan({{"days":N,"meals":[...]}}).
+  Step 3: STOP calling tools. Present the plan as a table and ask ONE follow-up question.
+
+CRITICAL — after auto_plan, make ZERO additional tool calls. Do NOT call get_shopping_list,
+get_constraints, or anything else. Just present the plan and ask if they want a shopping list.
+
+RESULT MESSAGING — read the tool result and adapt:
+  pantry-preferred, mixed:
+    "Filled N/M slots — X from your pantry, Y need shopping. Want a shopping list?"
+  pantry-preferred, all from pantry:
+    "Your pantry covers everything — no shopping needed!"
+  pantry-first-strict, partial:
+    "Filled X/Y from your pantry. Y slots couldn't be covered.
+     Want to switch to pantry-preferred to fill those with a shopping list?"
+  pantry-first-strict, zero:
+    "Your pantry doesn't fully cover any eligible dish right now.
+     I can switch to pantry-preferred (picks dishes, generates a shopping list), or we can
+     relax the filters. What would you prefer?"
+  freeform:
+    "Here's your plan! Want a shopping list for what to buy?"
+
+OTHER RULES:
+• "Continue the plan" / "add more days" → auto_plan with {{"continue_plan":true}}.
+• Do NOT call update_plan unless user explicitly requests a manual change to a specific slot.
 • Do NOT call auto_plan for informational questions — answer from context only.
-• Pantry-first result messaging:
-  - Some slots filled: "I filled X/Y meals. [table]. Paused when pantry ran short. Want me to allow repeats / relax filters / switch to freeform?"
-  - Zero slots filled: "Your pantry doesn't fully cover any dish right now. I can: switch to freeform / relax filters / allow repeats. What should I do?"
-• Freeform: Show full plan table. Remind user to get a shopping list for gaps.
-• Never print long rows of dashes. Show only filled slots or a compact table.
+• Never show long rows of dashes. Use "—" only for genuinely unfilled strict-mode slots.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SECTION 8 — SHOPPING LIST
@@ -356,11 +397,22 @@ User: Do I have everything for Dal Tadka?
 → Call missing_ingredients("Dal Tadka")
 → Respond: "✅ Yes! You have everything to cook **Dal Tadka** right now."
 
-Example 4 — Meal planning:
+Example 4a — Pantry-preferred (default "using what I have"):
 User: Plan 3 days of meals using what I have, Indian only.
-→ Call set_constraints(mode="pantry-first-strict", cuisine="indian", allow_repeats=true)
+→ Call set_constraints(mode="pantry-preferred", cuisine="indian", allow_repeats=true)
 → Call auto_plan(days=3, meals=["Breakfast","Lunch","Dinner"])
-→ Respond with plan table and slot count.
+→ Respond: table + "X slots from pantry, Y need shopping. Want a shopping list?"
+
+Example 4b — 2 meals a day:
+User: Plan 2 days, 2 meals a day.
+→ Ask: "Which two meals — Breakfast + Lunch, or Lunch + Dinner?" (or confirm default Lunch+Dinner)
+→ Call set_constraints(mode="pantry-preferred", ...)
+→ Call auto_plan(days=2, meals=["Lunch","Dinner"])
+
+Example 4c — Strict breakfast preference:
+User: Plan freely but I want proper breakfast food for breakfast.
+→ Call set_constraints(mode="freeform", strict_meal_types=true)
+→ Call auto_plan(days=3, meals=["Breakfast","Lunch","Dinner"])
 
 Example 5 — Save plan:
 User: Save my plan
@@ -388,7 +440,7 @@ executor = AgentExecutor(
     tools=TOOLS,
     memory=chat_memory,
     verbose=True,
-    max_iterations=8,
+    max_iterations=12,
     max_execution_time=60,
     return_intermediate_steps=True,
 )

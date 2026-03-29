@@ -102,6 +102,116 @@ def _find(name: str) -> Optional[Dict]:
         return next((r for r in db if _match(r["name"], hit[0])), None)
     return None
 
+# ── Substitution hints (inline, only for missing ingredients) ──────────────
+
+# Verbs so generic they add no useful context ("add onion" → skip "add")
+_GENERIC_VERBS = {
+    "heat", "add", "stir", "cook", "use", "mix", "put", "place", "pour",
+    "serve", "garnish", "season", "combine", "remove", "set", "let", "keep",
+    "bring", "reduce", "simmer", "boil", "fry", "wash", "cut", "chop",
+    "dice", "slice", "prepare", "transfer", "cover", "drain", "rinse",
+}
+
+def _usage_context(raw_item: str, steps: list) -> str:
+    """
+    Return a gerund describing what the ingredient is used for
+    (e.g. 'marinating', 'glazing') by finding the first recipe step that
+    mentions it and reading its opening action verb.
+    Returns '' if the verb is too generic or can't be determined.
+    """
+    keywords = [w for w in raw_item.lower().split() if len(w) > 3]
+    if not keywords:
+        return ""
+    for step in steps:
+        if any(kw in step.lower() for kw in keywords):
+            word = step.strip().split()[0].rstrip(".,;:").lower()
+            # Skip adverbs (end in -ly), prepositions, articles, and generic verbs
+            if word.endswith("ly") or len(word) <= 2 or word in _GENERIC_VERBS:
+                return ""
+            # convert to gerund
+            if word.endswith("ing"):
+                return word
+            if word.endswith("e") and not word.endswith("ee"):
+                return word[:-1] + "ing"
+            return word + "ing"
+    return ""
+
+
+def _get_sub_hints(recipe: dict) -> list:
+    """
+    Return a list of hint strings for ingredients the user doesn't have.
+    Only shows a hint when an ingredient is actually missing AND a known
+    substitute exists in the pantry. Silent otherwise.
+    """
+    try:
+        from tools.manager_tools import (
+            _load_pantry, _canonical_item_name, _aggregate_pantry_by_base,
+            _SUB_TABLE, _is_universal,
+        )
+    except ImportError:
+        return []
+
+    pantry_raw   = _load_pantry()
+    pantry_by_base = _aggregate_pantry_by_base(pantry_raw)
+
+    hints = []
+    seen_missing = set()   # deduplicate on canonical base name
+    steps = recipe.get("steps", [])
+
+    for ing in recipe.get("ingredients", []):
+        raw_item = str(ing.get("item", "") or "").strip()
+        if not raw_item:
+            continue
+        need_qty = float(ing.get("quantity", 0) or 0)
+        if need_qty <= 0:
+            continue
+        # Never flag universal staples (salt, oil, water, sugar …)
+        if _is_universal(raw_item):
+            continue
+
+        base = _canonical_item_name(raw_item)
+        if not base or base in seen_missing:
+            continue
+
+        # Check if pantry covers this ingredient (by canonical base name)
+        if base in pantry_by_base:
+            continue  # have it — no hint needed
+
+        # Also check via fuzzy coverage (e.g. "chicken" covers "boneless chicken breast",
+        # but correctly rejects "onion" covering "spring onion")
+        raw_lower = raw_item.lower()
+        if any(_fuzzy_covers(pb, base) for pb in pantry_by_base):
+            continue
+
+        # Ingredient is missing — search for a pantry substitute
+        seen_missing.add(base)
+        for kw_miss, kw_base, prep_note, conf in _SUB_TABLE:
+            if kw_miss not in raw_lower and kw_miss not in base:
+                continue
+            # Find a pantry item that contains the substitute keyword
+            matching = [pb for pb in pantry_by_base if kw_base in pb]
+            if not matching:
+                continue
+            actual = matching[0]
+
+            # Where in the recipe is this ingredient used?
+            ctx = _usage_context(raw_item, steps)
+            ctx_str = f" (for {ctx})" if ctx else ""
+
+            # Phrasing based on how close the substitute is
+            if conf >= 0.85:
+                hint = f"**{raw_item}**{ctx_str} → use **{actual}** instead"
+            else:
+                hint = f"**{raw_item}**{ctx_str} → **{actual}** works if needed (original preferred)"
+
+            if prep_note:
+                hint += f" *(tip: {prep_note})*"
+            hints.append(hint)
+            break   # first match wins per missing ingredient
+
+    return hints
+
+
 # ── LangChain tools ────────────────────────────────────────────────────────
 @tool
 def get_recipe(name: str) -> str:
@@ -114,8 +224,12 @@ def get_recipe(name: str) -> str:
              f"Prep {r['prep_time_min']} min · Cook {r['cook_time_min']} min"
     ings   = [_fmt_ing(i["item"], i["quantity"], i["unit"]) for i in r["ingredients"]]
     steps  = [f"{i+1}. {s}" for i, s in enumerate(r["steps"])]
-    return "\n".join([header, "", "### Ingredients"] + ings +
-                     ["", "### Steps"] + steps)
+    body   = "\n".join([header, "", "### Ingredients"] + ings +
+                       ["", "### Steps"] + steps)
+    hints  = _get_sub_hints(r)
+    if hints:
+        body += "\n\n### Substitution Hints\n" + "\n".join(f"- {h}" for h in hints)
+    return body
 
 @tool
 def list_recipes(cuisine: Optional[str] = None,
@@ -195,6 +309,8 @@ _FLAVOR_QUALIFIERS = {
     "balsamic", "apple",
     # sugars where the type matters to the recipe outcome
     "brown", "powdered", "icing", "palm",
+    # distinct allium varieties — spring onion ≠ onion
+    "spring",
     # stocks / broths — handled via exact match; removing from here
     # because "chicken" as a qualifier would wrongly block "chicken breast"
 }

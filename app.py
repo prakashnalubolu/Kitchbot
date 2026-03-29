@@ -800,13 +800,14 @@ with tab_plan:
     h1, h2, h3 = st.columns([0.4, 0.35, 0.25])
     with h1:
         _c  = planner_memory.memories.get("constraints", {})
-        _mode = _c.get("mode", "pantry-first-strict")
-        if _mode == "pantry-first-strict":
-            st.markdown('<span class="mode-badge">🔒 Pantry-first (strict)</span>',
-                        unsafe_allow_html=True)
-        else:
-            st.markdown('<span class="mode-badge mode-badge-free">🛒 Freeform</span>',
-                        unsafe_allow_html=True)
+        _mode = _c.get("mode", "pantry-preferred")
+        _badge_map = {
+            "pantry-preferred":    '<span class="mode-badge">🟡 Pantry-preferred</span>',
+            "pantry-first-strict": '<span class="mode-badge">🔒 Pantry-first (strict)</span>',
+            "freeform":            '<span class="mode-badge mode-badge-free">🛒 Freeform</span>',
+        }
+        st.markdown(_badge_map.get(_mode, _badge_map["pantry-preferred"]),
+                    unsafe_allow_html=True)
     with h2:
         ss["start_date"] = st.date_input("Plan start date", ss["start_date"],
                                           label_visibility="collapsed")
@@ -814,12 +815,19 @@ with tab_plan:
         gen_clicked = st.button("✨ Generate Plan", type="primary", use_container_width=True)
 
     # ── Generate settings (collapsible) ───────────────────────────────────────
-    with st.expander("⚙️  Plan settings", expanded=gen_clicked):
+    _MODE_OPTIONS = ["Pantry-preferred", "Pantry-first (strict)", "Freeform"]
+    _MODE_DESCRIPTIONS = {
+        "Pantry-preferred":       "🟡 Uses what you have first. Any gaps get filled with other recipes + a shopping list for just those gaps.",
+        "Pantry-first (strict)":  "🔒 Only recipes your pantry can fully cover. Slots it can't fill are left blank — no shopping needed.",
+        "Freeform":               "🛒 Pick any recipes you like. A full shopping list covers everything you'll need to buy.",
+    }
+    with st.expander("⚙️  Plan settings", expanded=True):
         s1, s2, s3 = st.columns(3)
-        gen_days  = s1.number_input("Days", 1, 14, 3, 1)
+        gen_mode  = s1.selectbox("Mode", _MODE_OPTIONS)
         gen_meals = s2.selectbox("Meals/day",
             ["3 (Breakfast, Lunch, Dinner)", "2 (Lunch, Dinner)", "1 (Dinner only)"])
-        gen_mode  = s3.selectbox("Mode", ["Pantry-first", "Freeform"])
+        gen_days  = s3.number_input("Days", 1, 14, 3, 1)
+        st.caption(_MODE_DESCRIPTIONS[gen_mode])
 
         s4, s5, s6 = st.columns(3)
         gen_cuisine  = s4.text_input("Cuisine", placeholder="any")
@@ -832,7 +840,9 @@ with tab_plan:
     if gen_clicked or go_btn:
         meals_hint = ("3 meals/day" if gen_meals.startswith("3") else
                       "2 meals/day" if gen_meals.startswith("2") else "1 meal/day")
-        mode_hint  = "pantry-first" if gen_mode == "Pantry-first" else "freeform"
+        mode_hint  = ("pantry-preferred" if gen_mode == "Pantry-preferred"
+                      else "pantry-first-strict" if gen_mode == "Pantry-first (strict)"
+                      else "freeform")
         req  = f"Please generate a {int(gen_days)}-day {mode_hint} meal plan with {meals_hint}."
         if gen_cuisine.strip(): req += f" Cuisine: {gen_cuisine.strip()}."
         if gen_diet != "Any":   req += f" Diet: {gen_diet}."

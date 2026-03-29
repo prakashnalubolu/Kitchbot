@@ -43,5 +43,28 @@
   "cream": {
     "qty": 150,
     "unit": "ml"
+  },
+  "turmeric powder": {
+    "qty": 100,
+    "unit": "g"
+  },
+  "coriander leaves": {
+    "qty": 50,
+    "unit": "g"
+  },
+  "cashew": {
+    "qty": 250,
+    "unit": "g"
+  },
+  "egg": {
+    "count": 12
+  },
+  "rice": {
+    "qty": 3000,
+    "unit": "g"
+  },
+  "wheat flour": {
+    "qty": 500,
+    "unit": "g"
   }
 }
