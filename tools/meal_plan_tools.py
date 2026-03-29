@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, os, datetime, re, random
+import json, os, datetime, re, random, time
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
@@ -407,7 +407,7 @@ def auto_plan(
                     once_placed.add(name_l)
                     break
 
-                # PASS 2 — any pantry dish (repeat allowed)
+                # PASS 2 — fallback: any pantry dish even if already used (repeat allowed)
                 if pick is None:
                     for r in once_list:
                         name_l = (r.get("name") or "").strip().lower()
@@ -418,10 +418,46 @@ def auto_plan(
                         _apply_deduction_canon(pick, shadow)
                         break
 
-                # PASS 3 — freeform fallback (pantry-preferred only)
+                # PASS 3 — freeform fallback (pantry-preferred only), prefer unseen
                 if pick is None and c["mode"] == "pantry-preferred":
                     shuffled = list(slot_candidates)
                     random.shuffle(shuffled)
+                    # prefer unseen first
+                    for r in shuffled:
+                        name_l = (r.get("name") or "").strip().lower()
+                        if name_l in once_placed:
+                            continue
+                        if no_consec and name_l == prev_dish_lower:
+                            continue
+                        pick        = r
+                        pick_reason = "shopping"
+                        once_placed.add(name_l)
+                        break
+                    # fallback: any dish
+                    if pick is None:
+                        for r in shuffled:
+                            name_l = (r.get("name") or "").strip().lower()
+                            if no_consec and name_l == prev_dish_lower:
+                                continue
+                            pick        = r
+                            pick_reason = "shopping"
+                            break
+
+            else:
+                # Freeform — prefer unseen, fall back to any
+                shuffled = list(slot_candidates)
+                random.shuffle(shuffled)
+                for r in shuffled:
+                    name_l = (r.get("name") or "").strip().lower()
+                    if name_l in once_placed:
+                        continue
+                    if no_consec and name_l == prev_dish_lower:
+                        continue
+                    pick        = r
+                    pick_reason = "shopping"
+                    once_placed.add(name_l)
+                    break
+                if pick is None:
                     for r in shuffled:
                         name_l = (r.get("name") or "").strip().lower()
                         if no_consec and name_l == prev_dish_lower:
@@ -429,18 +465,6 @@ def auto_plan(
                         pick        = r
                         pick_reason = "shopping"
                         break
-
-            else:
-                # Freeform — any eligible recipe, shuffled for variety
-                shuffled = list(slot_candidates)
-                random.shuffle(shuffled)
-                for r in shuffled:
-                    name_l = (r.get("name") or "").strip().lower()
-                    if no_consec and name_l == prev_dish_lower:
-                        continue
-                    pick        = r
-                    pick_reason = "shopping"
-                    break
 
             # ---- assign or skip unfillable slot
             if not pick:
@@ -483,17 +507,14 @@ def auto_plan(
     empty = total_slots - filled
     if mode == "pantry-preferred":
         if shopping_slots > 0 and pantry_slots > 0:
-            msg.append(f" {pantry_slots} slot(s) covered by your pantry, {shopping_slots} slot(s) need shopping. Call get_shopping_list for the exact items to buy.")
+            msg.append(f" {pantry_slots} slot(s) covered by your pantry, {shopping_slots} slot(s) need shopping.")
         elif pantry_slots == filled and shopping_slots == 0:
             msg.append(" Your pantry covers everything — no shopping needed!")
         elif pantry_slots == 0:
-            msg.append(" Your pantry couldn't cover any slot fully — all meals need shopping. Call get_shopping_list.")
+            msg.append(" Your pantry couldn't cover any slot fully — all meals need shopping.")
     elif mode == "pantry-first-strict":
         if empty > 0:
             msg.append(f" {empty} slot(s) left blank — pantry ran short. Switch to pantry-preferred to fill gaps with a shopping list.")
-    else:  # freeform
-        if filled > 0:
-            msg.append(" Call get_shopping_list for what to buy.")
 
     return "".join(msg)
 
@@ -536,8 +557,16 @@ def update_plan(day: str, meal: str, recipe_name: str, reason: str = "") -> str:
 ##############################################################################
 PANTRY_JSON_PATH = os.path.join(ROOT_DIR, "data", "pantry.json")
 
+_pantry_cache: Dict[str, int] = {}
+_pantry_cache_ts: float = 0.0
+_PANTRY_CACHE_TTL = 5.0  # seconds
+
 def _load_pantry() -> Dict[str, int]:
-    """Load pantry JSON (new nested or old flat) and return flat {item (unit): qty} dict."""
+    """Load pantry JSON (new nested or old flat) and return flat {item (unit): qty} dict.
+    Cached for 5 s to avoid repeated disk reads during planning."""
+    global _pantry_cache, _pantry_cache_ts
+    if time.monotonic() - _pantry_cache_ts < _PANTRY_CACHE_TTL:
+        return _pantry_cache
     try:
         with open(PANTRY_JSON_PATH, "r", encoding="utf-8") as fp:
             data = json.load(fp)
@@ -554,6 +583,8 @@ def _load_pantry() -> Dict[str, int]:
                         flat[f"{item} (count)"] = cnt
             elif isinstance(entry, (int, float)):
                 flat[item] = int(entry)
+        _pantry_cache = flat
+        _pantry_cache_ts = time.monotonic()
         return flat
     except FileNotFoundError:
         return {}
@@ -608,6 +639,26 @@ def _load_recipe_by_name(name: str) -> Dict[str, Any] | None:
         if r["name"].strip().lower() == name_l:
             return r
     return None
+
+def _recipe_covered_by_pantry(recipe_name: str) -> bool:
+    """Return True if every non-universal ingredient is present in the pantry (any qty > 0)."""
+    recipe = _load_recipe_by_name(recipe_name)
+    if not recipe:
+        return False
+    pantry = _load_pantry()
+    pantry_bases = set()
+    for k in pantry:
+        b, _ = _split_pantry_key(k)
+        pantry_bases.add(b)
+    for ing in recipe.get("ingredients", []):
+        raw = (ing.get("item") or "").strip().lower()
+        if not raw or _is_universal(raw):
+            continue
+        canon = _canon(raw)
+        if not any(_canon(pb) == canon or canon.startswith(_canon(pb)) or _canon(pb).startswith(canon)
+                   for pb in pantry_bases):
+            return False
+    return True
 
 ##############################################################################
 # 5 · save_plan – write plan + quantity shopping list to disk

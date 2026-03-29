@@ -12,10 +12,13 @@ from tools.meal_plan_tools import (
     memory as planner_memory,
     update_plan, cook_meal,
     get_shopping_list, save_plan,
+    set_constraints, auto_plan,
+    _recipe_covered_by_pantry,
 )
 from tools.pantry_tools import (
     add_to_pantry as _tool_add,
     remove_from_pantry as _tool_remove,
+    update_pantry as _tool_update,
 )
 
 if "constraints" not in planner_memory.memories:
@@ -129,6 +132,13 @@ button[data-baseweb="tab"]:hover { color: #D97706 !important; background: #FFFBE
     border-radius: 8px; padding: 8px 10px;
     font-size: 12px; color: #D1D5DB; text-align: center;
     min-height: 42px; display: flex; align-items: center; justify-content: center;
+}
+.meal-chip-cooked {
+    background: #F0FDF4; border: 1.5px solid #86EFAC;
+    border-radius: 8px; padding: 8px 10px;
+    font-size: 13px; color: #6B7280; text-align: center;
+    min-height: 42px; display: flex; align-items: center; justify-content: center;
+    gap: 6px;
 }
 
 /* ── Mode badge ── */
@@ -260,6 +270,7 @@ ss.setdefault("pantry_filter", "")
 ss.setdefault("active_tab", 0)
 ss.setdefault("_thinking", False)
 ss.setdefault("_pending_prompt", "")
+ss.setdefault("_show_add_days", False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths & helpers
@@ -336,7 +347,7 @@ def _parse_pantry_rows(d: Dict[str, Any]) -> List[Dict[str, Any]]:
     for r in rows:
         amount = f"{r['qty']} {r['unit']}" if r["qty"] and r["unit"] else ("—" if not r["qty"] else str(r["qty"]))
         out.append({"#": r["#"], "Item": r["item"],
-                    "Count": r["count"] if r["count"] is not None else "—",
+                    "Count": str(r["count"]) if r["count"] is not None else "—",
                     "Amount": amount})
     return out
 
@@ -690,6 +701,43 @@ with tab_pantry:
                         except Exception as e:
                             st.error(f"Error: {e}")
 
+        # ── Update quantity ──────────────────────────────────────────────────────
+        with st.expander("✏️  Update quantity"):
+            uq_item = st.text_input("Item name", placeholder="e.g. rice, paneer…", key="uq_item")
+
+            _uq_stored_units: List[str] = []
+            if uq_item.strip():
+                ok_uq, p_uq = _load_json_ok(PANTRY_PATH)
+                if ok_uq and isinstance(p_uq, dict):
+                    _item_l = uq_item.strip().lower()
+                    for item_k, entry_v in p_uq.items():
+                        if _item_l in item_k.strip().lower() or item_k.strip().lower() in _item_l:
+                            if isinstance(entry_v, dict):
+                                if "unit" in entry_v and entry_v["unit"] not in _uq_stored_units:
+                                    _uq_stored_units.append(entry_v["unit"])
+                                if "count" in entry_v and "count" not in _uq_stored_units:
+                                    _uq_stored_units.append("count")
+
+            _uq_unit_opts = _uq_stored_units or ["count", "g", "ml"]
+            uq1, uq2 = st.columns([1.5, 1])
+            uq_qty  = uq1.number_input("Set new quantity", min_value=0.0, value=1.0, step=1.0, key="uq_qty")
+            uq_unit = uq2.selectbox("Unit", _uq_unit_opts, key="uq_unit")
+
+            if st.button("✏️  Update quantity", type="primary", use_container_width=True, key="uq_go"):
+                if not uq_item.strip():
+                    st.warning("Enter an item name.")
+                else:
+                    try:
+                        result = _tool_update.invoke({
+                            "item": uq_item.strip().lower(),
+                            "quantity": float(uq_qty),
+                            "unit": uq_unit,
+                        })
+                        st.success(f"✓ {result}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
         # ── Unit converter ──────────────────────────────────────────────────────
         with st.expander("⚖️  Unit converter"):
             _WEIGHT = {"g": 1.0, "kg": 1000.0, "oz": 28.3495, "lb": 453.592}
@@ -796,8 +844,11 @@ with tab_pantry:
 # ═════════════════════════════════════════════════════════════════════════════
 with tab_plan:
 
-    # ── Header row: mode badge + start date + generate button ─────────────────
-    h1, h2, h3 = st.columns([0.4, 0.35, 0.25])
+    # Read plan early so header can adapt
+    _current_plan: Dict[str, Dict[str, str]] = planner_memory.memories.get("plan", {}) or {}
+
+    # ── Header row: mode badge + start date ───────────────────────────────────
+    h1, _hspace, h2 = st.columns([0.35, 0.43, 0.22])
     with h1:
         _c  = planner_memory.memories.get("constraints", {})
         _mode = _c.get("mode", "pantry-preferred")
@@ -811,10 +862,8 @@ with tab_plan:
     with h2:
         ss["start_date"] = st.date_input("Plan start date", ss["start_date"],
                                           label_visibility="collapsed")
-    with h3:
-        gen_clicked = st.button("✨ Generate Plan", type="primary", use_container_width=True)
 
-    # ── Generate settings (collapsible) ───────────────────────────────────────
+    # ── Plan settings expander ─────────────────────────────────────────────────
     _MODE_OPTIONS = ["Pantry-preferred", "Pantry-first (strict)", "Freeform"]
     _MODE_DESCRIPTIONS = {
         "Pantry-preferred":       "🟡 Uses what you have first. Any gaps get filled with other recipes + a shopping list for just those gaps.",
@@ -835,32 +884,72 @@ with tab_plan:
         gen_max_time = s6.number_input("Max time (min)", 0, 240, 0, 15)
         gen_no_rpt   = st.checkbox("Avoid repeats", value=False)
 
-        go_btn = st.button("Generate", type="primary", use_container_width=True, key="gen_go")
+        # Action buttons: Add Days (left, only when plan exists) + Generate (right)
+        if _current_plan:
+            btn_l, btn_r = st.columns(2)
+            add_clicked = btn_l.button("➕ Add More Days", use_container_width=True, key="add_days_header",
+                                       help="Append new days to your existing plan")
+            gen_clicked = btn_r.button("🔄 New Plan", type="primary", use_container_width=True, key="gen_go",
+                                       help="Replace current plan with a fresh one")
+        else:
+            add_clicked = False
+            gen_clicked = st.button("✨ Generate Plan", type="primary", use_container_width=True, key="gen_go")
 
-    if gen_clicked or go_btn:
-        meals_hint = ("3 meals/day" if gen_meals.startswith("3") else
-                      "2 meals/day" if gen_meals.startswith("2") else "1 meal/day")
-        mode_hint  = ("pantry-preferred" if gen_mode == "Pantry-preferred"
-                      else "pantry-first-strict" if gen_mode == "Pantry-first (strict)"
-                      else "freeform")
-        req  = f"Please generate a {int(gen_days)}-day {mode_hint} meal plan with {meals_hint}."
-        if gen_cuisine.strip(): req += f" Cuisine: {gen_cuisine.strip()}."
-        if gen_diet != "Any":   req += f" Diet: {gen_diet}."
-        if gen_max_time > 0:    req += f" Max cook time: {int(gen_max_time)} minutes."
-        if gen_no_rpt:          req += " No repeats."
+    def _build_constraints():
+        """Map UI settings to tool args."""
+        return dict(
+            mode=("pantry-preferred" if gen_mode == "Pantry-preferred"
+                  else "pantry-first-strict" if gen_mode == "Pantry-first (strict)"
+                  else "freeform"),
+            cuisine=gen_cuisine.strip() or None,
+            diet=(gen_diet if gen_diet != "Any" else None),
+            max_time=(int(gen_max_time) if gen_max_time > 0 else None),
+            allow_repeats=not gen_no_rpt,
+        )
+
+    def _build_meals_list():
+        return (["Breakfast", "Lunch", "Dinner"] if gen_meals.startswith("3")
+                else ["Lunch", "Dinner"] if gen_meals.startswith("2")
+                else ["Dinner"])
+
+    if gen_clicked:
         with st.spinner("Planning your meals…"):
             try:
-                out = kitchen_chat(req)
-                ss["messages_kitchen"].append({"role": "user",    "content": req})
-                ss["messages_kitchen"].append({"role": "assistant","content": out})
-                st.success(out)
+                set_constraints.invoke(_build_constraints())
+                out = auto_plan.invoke({"days": int(gen_days), "meals": _build_meals_list(), "continue_plan": False})
+                ss["plan_page"] = 0
+                ss["_last_plan_msg"] = out
+                st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
+
+    if add_clicked:
+        with st.spinner(f"Adding {int(gen_days)} day(s)…"):
+            try:
+                set_constraints.invoke(_build_constraints())
+                out = auto_plan.invoke({"days": int(gen_days), "meals": _build_meals_list(), "continue_plan": True})
+                ss["_last_plan_msg"] = out
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    if ss.get("_last_plan_msg"):
+        st.success(ss.pop("_last_plan_msg"))
 
     st.divider()
 
     # ── Plan grid ─────────────────────────────────────────────────────────────
     plan: Dict[str, Dict[str, str]] = planner_memory.memories.get("plan", {}) or {}
+
+    # Pre-compute pantry coverage for every slot once; cache by plan fingerprint
+    _plan_fp = str(sorted((d, m, r) for d, meals in plan.items() for m, r in meals.items()))
+    if ss.get("_coverage_fp") != _plan_fp:
+        ss["_plan_coverage"] = {
+            (d, m): _recipe_covered_by_pantry(r)
+            for d, meals in plan.items()
+            for m, r in meals.items() if r
+        }
+        ss["_coverage_fp"] = _plan_fp
 
     if not plan:
         st.markdown("""
@@ -885,50 +974,90 @@ with tab_plan:
             return day_key, d.strftime("%a, %d %b")
 
         MEALS = ["Breakfast", "Lunch", "Dinner"]
+        PAGE_SIZE = 3
 
-        # Column headers
-        header_cols = st.columns([0.12] + [1] * len(days_sorted), gap="small")
+        # Pagination state
+        if "plan_page" not in ss:
+            ss["plan_page"] = 0
+        total_days  = len(days_sorted)
+        total_pages = max(1, (total_days + PAGE_SIZE - 1) // PAGE_SIZE)
+        ss["plan_page"] = min(ss["plan_page"], total_pages - 1)
+        page_start  = ss["plan_page"] * PAGE_SIZE
+        page_days   = days_sorted[page_start : page_start + PAGE_SIZE]
+
+        # Column headers: Day | Breakfast | Lunch | Dinner
+        header_cols = st.columns([0.18, 1, 1, 1], gap="small")
         header_cols[0].markdown("&nbsp;", unsafe_allow_html=True)
-        for ci, day in enumerate(days_sorted):
-            dk, date_str = _day_label(day)
+        for ci, meal in enumerate(MEALS):
             header_cols[ci+1].markdown(
+                f'<div class="plan-day-label" style="text-align:center">{meal}</div>',
+                unsafe_allow_html=True)
+
+        # Day rows
+        pending_updates: List[Dict] = []
+        for day in page_days:
+            dk, date_str = _day_label(day)
+            row_cols = st.columns([0.18, 1, 1, 1], gap="small")
+            row_cols[0].markdown(
                 f'<div class="plan-day-label">{dk}<span class="plan-day-date">{date_str}</span></div>',
                 unsafe_allow_html=True)
-
-        # Meal rows
-        pending_updates: List[Dict] = []
-        for meal in MEALS:
-            row_cols = st.columns([0.12] + [1] * len(days_sorted), gap="small")
-            row_cols[0].markdown(
-                f'<div class="meal-label" style="padding-top:10px">{meal[:5]}</div>',
-                unsafe_allow_html=True)
-            for ci, day in enumerate(days_sorted):
+            for ci, meal in enumerate(MEALS):
                 dish = (plan.get(day) or {}).get(meal, "")
+                is_cooked = dish.startswith("✅")
+                clean_dish = dish.lstrip("✅ ").strip()
                 with row_cols[ci+1]:
                     if not edit_mode:
                         if dish:
-                            if st.button(dish, key=f"pb_{day}_{meal}",
-                                         use_container_width=True, help=f"Preview {dish}"):
-                                ss["cuisine_autofocus"] = dish
+                            if is_cooked:
+                                st.markdown(
+                                    f'<div class="meal-chip-cooked">✅ <s>{clean_dish}</s></div>',
+                                    unsafe_allow_html=True)
+                            else:
+                                covered = ss.get("_plan_coverage", {}).get((day, meal), False)
+                                badge = "🟢" if covered else "🛒"
+                                tip = "Ready to cook from pantry" if covered else "Needs shopping"
+                                if st.button(f"{badge} {clean_dish}", key=f"pb_{day}_{meal}",
+                                             use_container_width=True, help=tip):
+                                    ss["cuisine_autofocus"] = clean_dish
                         else:
                             st.markdown('<div class="meal-chip-empty">—</div>',
                                         unsafe_allow_html=True)
                     else:
                         new_val = st.text_input(
-                            f"{meal}", value=dish,
+                            f"{meal}", value=clean_dish,
                             key=f"edit_{day}_{meal}", label_visibility="collapsed",
                             placeholder="Dish name…")
-                        if new_val.strip() and new_val.strip() != (dish or "").strip():
+                        if new_val.strip() and new_val.strip() != (clean_dish or "").strip():
                             pending_updates.append({
                                 "day": day, "meal": meal,
                                 "recipe_name": new_val.strip(), "reason": "edited in UI"
                             })
 
+        # Prev / Next navigation
+        if total_pages > 1:
+            nav_l, nav_mid, nav_r = st.columns([1, 2, 1])
+            if nav_l.button("← Prev", disabled=(ss["plan_page"] == 0),
+                            use_container_width=True, key="plan_prev"):
+                ss["plan_page"] -= 1
+                st.rerun()
+            nav_mid.markdown(
+                f'<div style="text-align:center;padding-top:8px;color:#6B7280;font-size:13px">'
+                f'Days {page_start+1}–{min(page_start+PAGE_SIZE, total_days)} of {total_days}</div>',
+                unsafe_allow_html=True)
+            if nav_r.button("Next →", disabled=(ss["plan_page"] >= total_pages - 1),
+                            use_container_width=True, key="plan_next"):
+                ss["plan_page"] += 1
+                st.rerun()
+
         if edit_mode and st.button("💾 Save edits", type="primary", use_container_width=True):
-            msgs = []
+            _all_recipe_names = {r.get("name","").lower() for r in cuisine_load()}
+            saved, skipped = [], []
             for upd in pending_updates:
+                if upd["recipe_name"].lower() not in _all_recipe_names:
+                    skipped.append(upd["recipe_name"])
+                    continue
                 try:
-                    msg = update_plan.invoke({
+                    update_plan.invoke({
                         "day": upd["day"],
                         "meal": upd["meal"],
                         "recipe_name": upd["recipe_name"],
@@ -936,10 +1065,19 @@ with tab_plan:
                     })
                     plan.setdefault(upd["day"], {})[upd["meal"]] = upd["recipe_name"]
                     planner_memory.memories["plan"] = plan
+                    saved.append(upd["recipe_name"])
                 except Exception as e:
-                    msg = f"Error: {e}"
-                msgs.append(str(msg))
-            st.success("Saved:\n" + "\n".join(msgs) if msgs else "No changes.")
+                    skipped.append(f"{upd['recipe_name']} (error: {e})")
+            if saved:
+                st.success(f"Saved: {', '.join(saved)}")
+            if skipped:
+                st.warning(
+                    f"**{', '.join(skipped)}** not found in our recipe database — skipped.\n\n"
+                    "Only recipes already in KitchBot's database can be added to the plan. "
+                    "Custom recipe support is coming in v2! 🚀"
+                )
+            if not saved and not skipped:
+                st.info("No changes to save.")
 
         # ── Recipe preview (autofocus) ─────────────────────────────────────────
         if ss.get("cuisine_autofocus"):
@@ -1003,43 +1141,44 @@ with tab_plan:
                     st.error(f"Error: {e}")
             st.caption("Saved to the /plans folder.")
 
-        st.divider()
+    st.divider()
 
-        # ── Recipe search / browse ─────────────────────────────────────────────
-        with st.expander("🔍  Browse recipes"):
-            recipes_all = cuisine_load()
-            cuisines    = sorted({(r.get("cuisine") or "").title()
-                                  for r in recipes_all if r.get("cuisine")})
-            bc1, bc2, bc3 = st.columns([1.5, 1, 1])
-            q_name      = bc1.text_input("Search by name", placeholder="e.g. palak paneer",
-                                         key="browse_q")
-            sel_cuisine = bc2.selectbox("Cuisine", ["Any"] + cuisines, key="browse_cuisine")
-            sel_diet    = bc3.selectbox("Diet", ["Any","veg","eggtarian","non-veg"],
-                                        key="browse_diet")
+    # ── Recipe search / browse — always visible ────────────────────────────────
+    with st.expander("🔍  Browse recipes"):
+        recipes_all = cuisine_load()
+        cuisines    = sorted({(r.get("cuisine") or "").title()
+                              for r in recipes_all if r.get("cuisine")})
+        bc1, bc2, bc3 = st.columns([1.5, 1, 1])
+        q_name      = bc1.text_input("Search by name", placeholder="e.g. palak paneer",
+                                     key="browse_q")
+        sel_cuisine = bc2.selectbox("Cuisine", ["Any"] + cuisines, key="browse_cuisine")
+        sel_diet    = bc3.selectbox("Diet", ["Any","veg","eggtarian","non-veg"],
+                                    key="browse_diet")
 
-            q_l        = q_name.strip().lower()
-            wc         = (sel_cuisine if sel_cuisine != "Any" else "").lower()
-            wd         = (sel_diet    if sel_diet    != "Any" else "")
-            matches    = [r for r in recipes_all
-                          if (not q_l or q_l in (r.get("name","")).lower())
-                          and (not wc or (r.get("cuisine","").lower() == wc))
-                          and cuisine_diet_ok(r.get("diet"), wd)]
+        q_l        = q_name.strip().lower()
+        wc         = (sel_cuisine if sel_cuisine != "Any" else "").lower()
+        wd         = (sel_diet    if sel_diet    != "Any" else "")
+        matches    = [r for r in recipes_all
+                      if (not q_l or q_l in (r.get("name","")).lower())
+                      and (not wc or (r.get("cuisine","").lower() == wc))
+                      and cuisine_diet_ok(r.get("diet"), wd)]
 
-            if not matches:
-                st.info("No recipes match those filters.")
-            else:
-                disp = [{"Name": r.get("name","").title(),
-                          "Cuisine": (r.get("cuisine","") or "").title(),
-                          "Diet": r.get("diet",""),
-                          "Time (min)": int(r.get("prep_time_min",0)) + int(r.get("cook_time_min",0))}
-                         for r in matches]
-                st.dataframe(pd.DataFrame(disp), use_container_width=True, hide_index=True)
-                names  = [m["Name"] for m in disp]
-                pick   = st.selectbox("View full recipe", names, key="browse_pick")
-                picked = next(r for r in matches if r.get("name","").title() == pick)
-                st.markdown(_fmt_recipe_md(picked))
+        if not matches:
+            st.info("No recipes match those filters.")
+        else:
+            disp = [{"Name": r.get("name","").title(),
+                      "Cuisine": (r.get("cuisine","") or "").title(),
+                      "Diet": r.get("diet",""),
+                      "Time (min)": int(r.get("prep_time_min",0)) + int(r.get("cook_time_min",0))}
+                     for r in matches]
+            st.dataframe(pd.DataFrame(disp), use_container_width=True, hide_index=True)
+            names  = [m["Name"] for m in disp]
+            pick   = st.selectbox("View full recipe", names, key="browse_pick")
+            picked = next(r for r in matches if r.get("name","").title() == pick)
+            st.markdown(_fmt_recipe_md(picked))
 
-        # ── Reset meal plan ────────────────────────────────────────────────────
+    # ── Reset meal plan — only when plan exists ────────────────────────────────
+    if plan:
         st.divider()
         if not ss.get("_confirm_reset_plan"):
             if st.button("↺  Reset meal plan", use_container_width=True, key="reset_plan_btn"):
@@ -1088,10 +1227,10 @@ with tab_chat:
           </div>
         </div>""", unsafe_allow_html=True)
 
-        # Clickable suggestion chips — each fires the question immediately
+        # Clickable suggestion chips — prefill the chat input, let user edit then send
         suggestions = [
             "What can I cook right now?",
-            "Plan 3 days of meals using what I have",
+            "Plan 3 days of breakfast, lunch, and dinner using what I have",
             "What's missing for Palak Paneer?",
             "Show me Indian vegetarian recipes",
             "Get my shopping list",
@@ -1099,11 +1238,7 @@ with tab_chat:
         chip_cols = st.columns(len(suggestions))
         for col, suggestion in zip(chip_cols, suggestions):
             if col.button(suggestion, key=f"chip_{suggestion[:20]}", use_container_width=True):
-                ss["messages_kitchen"].append({"role": "user", "content": suggestion})
-                ss["events"].append({"label": label_user_turn(suggestion),
-                                     "msg_idx": len(ss["messages_kitchen"]) - 1})
-                ss["_thinking"] = True
-                ss["_pending_prompt"] = suggestion
+                ss["_chip_prefill"] = suggestion
                 st.rerun()
 
     # ── Message history — always above the input bar
@@ -1152,6 +1287,32 @@ with tab_chat:
             if _c2.button("Cancel", use_container_width=True, key="confirm_reset_chat_no"):
                 ss["_confirm_reset_chat"] = False
                 st.rerun()
+
+    # ── If a chip was clicked, inject JS to prefill the chat textarea and focus it
+    if ss.get("_chip_prefill"):
+        _prefill_text = ss.pop("_chip_prefill").replace("'", "\\'")
+        _components.html(f"""
+        <script>
+        (function() {{
+            function fill() {{
+                var textareas = window.parent.document.querySelectorAll('textarea');
+                for (var i = 0; i < textareas.length; i++) {{
+                    var ta = textareas[i];
+                    if (ta.placeholder && ta.placeholder.indexOf('KitchBot') !== -1) {{
+                        var setter = Object.getOwnPropertyDescriptor(
+                            window.HTMLTextAreaElement.prototype, 'value').set;
+                        setter.call(ta, '{_prefill_text}');
+                        ta.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        ta.focus();
+                        return true;
+                    }}
+                }}
+                return false;
+            }}
+            if (!fill()) {{ setTimeout(fill, 150); }}
+        }})();
+        </script>
+        """, height=0)
 
     # ── Chat input — always at the bottom
     prompt = st.chat_input("Ask KitchBot anything — pantry, recipes, meal plans…")

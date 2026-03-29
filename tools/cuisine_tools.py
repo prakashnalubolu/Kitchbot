@@ -1,7 +1,7 @@
 """
 tools/cuisine_tools.py  –  CRUD + query helpers for recipes.json
 """
-import json, os, re, difflib
+import json, os, re, difflib, functools
 from typing import List, Optional, Dict
 from dotenv import load_dotenv
 from langchain_core.tools import tool
@@ -15,11 +15,20 @@ DATA_PATH = os.path.abspath(os.path.join(DATA_DIR, "recipe.json"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── low-level storage helpers ──────────────────────────────────────────────
-def _load() -> List[Dict]:
+@functools.lru_cache(maxsize=1)
+def _load_cached() -> tuple:
+    """Load recipes once and cache. Returns a tuple (immutable) for lru_cache."""
     if os.path.exists(DATA_PATH):
         with open(DATA_PATH, encoding="utf-8") as f:
-            return json.load(f)  # let JSON errors raise
-    return []
+            return tuple(json.load(f))
+    return ()
+
+def _load() -> List[Dict]:
+    return list(_load_cached())
+
+def _invalidate_recipe_cache():
+    """Call after writing recipe.json to force a fresh load."""
+    _load_cached.cache_clear()
 
 def _normalize(name: str) -> str:
     """Return the head noun for loose matching."""
