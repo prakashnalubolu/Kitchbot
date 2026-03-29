@@ -421,8 +421,8 @@ def _render_shopping_list() -> None:
     ]:
         if items:
             st.markdown(f'<div class="sl-section">{section}</div>', unsafe_allow_html=True)
-            for item_name, label in items:
-                st.checkbox(label, key=f"sl_ck_{item_name}", value=False)
+            for idx, (item_name, label) in enumerate(items):
+                st.checkbox(label, key=f"sl_ck_{section[:4]}_{idx}_{item_name}", value=False)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Event labeller (chat history sidebar labels)

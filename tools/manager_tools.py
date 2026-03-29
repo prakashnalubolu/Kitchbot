@@ -163,6 +163,24 @@ _G_PER_COUNT: dict[str, float] = {
     "lime": 60.0,
     "potato": 150.0,    # medium potato ≈ 150 g
     "carrot": 80.0,
+    "capsicum": 150.0,  # one medium capsicum/bell pepper ≈ 150 g
+    "pepper": 150.0,
+    "cucumber": 200.0,  # one cucumber ≈ 200 g
+    "eggplant": 300.0,  # one medium eggplant ≈ 300 g
+    "brinjal": 300.0,
+}
+
+# Grams-per-ml for common cooking liquids (density approximations).
+# Used when pantry stores a liquid in ml but a recipe needs it in g (or vice versa).
+_G_PER_ML: dict[str, float] = {
+    "ghee": 0.9,
+    "butter": 0.9,
+    "oil": 0.92,
+    "milk": 1.03,
+    "cream": 1.0,
+    "yogurt": 1.03,
+    "curd": 1.03,
+    "honey": 1.4,
 }
 
 def _count_to_g(name: str, count_qty: int) -> Optional[float]:
@@ -177,6 +195,22 @@ def _g_to_count(name: str, g_qty: int) -> Optional[float]:
     for keyword, gpcount in _G_PER_COUNT.items():
         if keyword in name:
             return g_qty / gpcount
+    return None
+
+def _ml_to_g(name: str, ml_qty: float) -> Optional[float]:
+    """Convert ml to grams using density table. Returns None if unknown."""
+    name_l = name.lower()
+    for keyword, density in _G_PER_ML.items():
+        if keyword in name_l:
+            return ml_qty * density
+    return None
+
+def _g_to_ml(name: str, g_qty: float) -> Optional[float]:
+    """Convert grams to ml using density table. Returns None if unknown."""
+    name_l = name.lower()
+    for keyword, density in _G_PER_ML.items():
+        if keyword in name_l:
+            return g_qty / density
     return None
 
 def _pantry_covers(pantry_map: dict[tuple[str, str], int],

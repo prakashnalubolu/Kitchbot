@@ -9,7 +9,7 @@ from tools.cuisine_tools import _load as _load_recipes
 from tools.textnorm import canonical_key as _canon, canonical_and_unit as _canon_and_unit
 from tools import pantry_tools as _pt
 from tools.pantry_tools import get_pantry_items as _get_pantry_items
-from tools.manager_tools import _is_universal, _count_to_g, _g_to_count
+from tools.manager_tools import _is_universal, _count_to_g, _g_to_count, _ml_to_g, _g_to_ml
 
 
 
@@ -634,17 +634,58 @@ def _collect_plan_requirements(plan: Dict[str, Dict[str, str]]) -> Dict[Tuple[st
     return need
 
 def _quantity_shopping_deficits(plan: Dict[str, Dict[str, str]]) -> List[Dict[str, Any]]:
-    """Compare plan needs to pantry and return deficits with quantities."""
+    """Compare plan needs to pantry and return deficits with quantities.
+
+    Handles count↔g unit mismatches (e.g. pantry has 6 garlic count,
+    recipe needs 10g garlic → converts and correctly shows no deficit).
+    Also deduplicates items that appear in both count and g across recipes.
+    """
     pantry = _load_pantry()
     needs = _collect_plan_requirements(plan)
+
+    # Merge count+g needs for the same item into a single unit (grams preferred)
+    # so "capsicum 1 count" and "capsicum 100g" don't show as two separate rows.
+    merged: Dict[Tuple[str, str], int] = {}
+    for (item, unit), qty in needs.items():
+        if unit == "count":
+            g = _count_to_g(item, qty)
+            if g is not None:
+                merged[(item, "g")] = merged.get((item, "g"), 0) + int(g)
+                continue
+        merged[(item, unit)] = merged.get((item, unit), 0) + qty
+
     deficits: List[Dict[str, Any]] = []
-    for (item, unit), need_qty in needs.items():
+    for (item, unit), need_qty in merged.items():
+        # Exact unit match
         key = _find_matching_key(pantry, item, unit)
         have = int(pantry.get(key, 0)) if key else 0
+
+        # Fallback: try alternate unit families with conversion
+        if have == 0:
+            for alt_unit in ("g", "ml", "count"):
+                if alt_unit == unit:
+                    continue
+                alt_key = _find_matching_key(pantry, item, alt_unit)
+                if not alt_key:
+                    continue
+                alt_qty = int(pantry.get(alt_key, 0))
+                converted: Optional[float] = None
+                if unit == "g" and alt_unit == "count":
+                    converted = _count_to_g(item, alt_qty)
+                elif unit == "count" and alt_unit == "g":
+                    converted = _g_to_count(item, alt_qty)
+                elif unit == "g" and alt_unit == "ml":
+                    converted = _ml_to_g(item, alt_qty)
+                elif unit == "ml" and alt_unit == "g":
+                    converted = _g_to_ml(item, alt_qty)
+                if converted is not None:
+                    have = int(converted)
+                    break
+
         buy = max(0, need_qty - have)
         if buy > 0:
             deficits.append({"item": item, "unit": unit, "need": need_qty, "have": have, "buy": buy})
-    # nice stable sort
+
     deficits.sort(key=lambda d: (d["unit"], d["item"]))
     return deficits
 
