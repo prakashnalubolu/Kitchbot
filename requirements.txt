@@ -1,16 +1,31 @@
-# core packages — must stay on 0.3.x (1.x is a full rewrite, breaks create_react_agent)
-langchain==0.3.25
-langchain-core==0.3.64
-langgraph==0.4.8
+# ── LangChain 1.x stack ───────────────────────────────────────────────────────
+langchain==1.2.15
+langchain-core==1.3.0
+langgraph==1.1.8
 
-# OpenAI integration
-langchain-openai==0.2.14
-openai>=1.0.0
+# ── LLM providers ─────────────────────────────────────────────────────────────
+# Ollama (default, open-source local):  ollama pull qwen3:8b
+# Vision/OCR (receipt scan):            ollama pull qwen2.5vl:7b
+langchain-ollama==1.1.0
+langchain-openai==1.1.14
+openai>=2.0.0
 
-# tooling
-pytest~=8.0
-python-dotenv~=1.0
-streamlit==1.45.1
+# ── Backend API ───────────────────────────────────────────────────────────────
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart
+httpx
 
+# ── NLP / text normalization ──────────────────────────────────────────────────
 spacy
 inflect
+
+# ── PDF export ────────────────────────────────────────────────────────────────
+fpdf2>=2.7.0
+
+# ── PDF → image for receipt scan (optional but needed for PDF uploads) ────────
+pymupdf>=1.23.0
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest~=8.0
+python-dotenv~=1.0

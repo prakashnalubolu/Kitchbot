@@ -10,10 +10,11 @@ from tools.textnorm import canonical_key, canonical_and_unit
 
 
 from langchain_core.tools import tool
-from langchain.memory import SimpleMemory
 
-# Expose a small memory object so the UI can still show "Manager slots".
-memory: SimpleMemory = SimpleMemory(memories={})
+class _Store:
+    def __init__(self): self.memories: dict = {}
+
+memory = _Store()
 
 # --------------------------------------------------------------------- Paths
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

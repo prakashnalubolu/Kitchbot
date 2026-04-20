@@ -1,53 +1,195 @@
 {
-  "rice": { "qty": 2000, "unit": "g" },
-  "atta": { "qty": 1000, "unit": "g" },
-  "maida": { "qty": 400, "unit": "g" },
-  "besan": { "qty": 300, "unit": "g" },
-  "semolina": { "qty": 400, "unit": "g" },
-  "poha": { "qty": 300, "unit": "g" },
-  "oats": { "qty": 400, "unit": "g" },
-  "toor dal": { "qty": 500, "unit": "g" },
-  "moong dal": { "qty": 300, "unit": "g" },
-  "chana dal": { "qty": 300, "unit": "g" },
-  "rajma": { "qty": 300, "unit": "g" },
-  "chickpea": { "qty": 300, "unit": "g" },
-  "onion": { "count": 8 },
-  "tomato": { "count": 10 },
-  "potato": { "count": 6 },
-  "garlic clove": { "count": 30 },
-  "ginger": { "qty": 150, "unit": "g" },
-  "green chili": { "count": 12 },
-  "spinach": { "qty": 400, "unit": "g" },
-  "capsicum": { "count": 3 },
-  "carrot": { "count": 5 },
-  "eggplant": { "count": 2 },
-  "coriander leaves": { "qty": 60, "unit": "g" },
-  "peas": { "qty": 250, "unit": "g" },
-  "lemon": { "count": 4 },
-  "milk": { "qty": 2000, "unit": "ml" },
-  "paneer": { "qty": 500, "unit": "g" },
-  "curd": { "qty": 600, "unit": "g" },
-  "ghee": { "qty": 250, "unit": "ml" },
-  "butter": { "qty": 100, "unit": "g" },
-  "cream": { "qty": 150, "unit": "ml" },
-  "egg": { "count": 12 },
-  "chicken": { "qty": 1000, "unit": "g" },
-  "turmeric powder": { "qty": 60, "unit": "g" },
-  "red chili powder": { "qty": 60, "unit": "g" },
-  "coriander powder": { "qty": 60, "unit": "g" },
-  "cumin seeds": { "qty": 50, "unit": "g" },
-  "garam masala": { "qty": 40, "unit": "g" },
-  "mustard seeds": { "qty": 30, "unit": "g" },
-  "cumin powder": { "qty": 30, "unit": "g" },
-  "kashmiri red chili powder": { "qty": 30, "unit": "g" },
-  "cardamom": { "qty": 10, "unit": "g" },
-  "bay leaf": { "count": 6 },
-  "clove": { "qty": 5, "unit": "g" },
-  "cinnamon": { "qty": 10, "unit": "g" },
-  "black pepper": { "qty": 20, "unit": "g" },
-  "cashew nuts": { "qty": 100, "unit": "g" },
-  "coconut milk": { "qty": 400, "unit": "ml" },
-  "soy sauce": { "qty": 100, "unit": "ml" },
-  "vinegar": { "qty": 60, "unit": "ml" },
-  "tomato paste": { "qty": 100, "unit": "g" }
+  "rice": {
+    "qty": 2000,
+    "unit": "g"
+  },
+  "atta": {
+    "qty": 1000,
+    "unit": "g"
+  },
+  "maida": {
+    "qty": 400,
+    "unit": "g"
+  },
+  "besan": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "semolina": {
+    "qty": 400,
+    "unit": "g"
+  },
+  "poha": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "oats": {
+    "qty": 400,
+    "unit": "g"
+  },
+  "toor dal": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "moong dal": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "chana dal": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "rajma": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "chickpea": {
+    "qty": 300,
+    "unit": "g"
+  },
+  "onion": {
+    "count": 8
+  },
+  "tomato": {
+    "count": 10
+  },
+  "potato": {
+    "count": 6
+  },
+  "garlic clove": {
+    "count": 30
+  },
+  "ginger": {
+    "qty": 150,
+    "unit": "g"
+  },
+  "green chili": {
+    "count": 12
+  },
+  "spinach": {
+    "qty": 400,
+    "unit": "g"
+  },
+  "capsicum": {
+    "count": 3
+  },
+  "carrot": {
+    "count": 5
+  },
+  "eggplant": {
+    "count": 2
+  },
+  "coriander leaves": {
+    "qty": 60,
+    "unit": "g"
+  },
+  "peas": {
+    "qty": 250,
+    "unit": "g"
+  },
+  "lemon": {
+    "count": 4
+  },
+  "milk": {
+    "qty": 2000,
+    "unit": "ml"
+  },
+  "paneer": {
+    "qty": 500,
+    "unit": "g"
+  },
+  "curd": {
+    "qty": 600,
+    "unit": "g"
+  },
+  "ghee": {
+    "qty": 250,
+    "unit": "ml"
+  },
+  "butter": {
+    "qty": 100,
+    "unit": "g"
+  },
+  "cream": {
+    "qty": 150,
+    "unit": "ml"
+  },
+  "egg": {
+    "count": 12
+  },
+  "chicken": {
+    "qty": 1500,
+    "unit": "g"
+  },
+  "turmeric powder": {
+    "qty": 60,
+    "unit": "g"
+  },
+  "red chili powder": {
+    "qty": 60,
+    "unit": "g"
+  },
+  "coriander powder": {
+    "qty": 60,
+    "unit": "g"
+  },
+  "cumin seeds": {
+    "qty": 50,
+    "unit": "g"
+  },
+  "garam masala": {
+    "qty": 40,
+    "unit": "g"
+  },
+  "mustard seeds": {
+    "qty": 30,
+    "unit": "g"
+  },
+  "cumin powder": {
+    "qty": 30,
+    "unit": "g"
+  },
+  "kashmiri red chili powder": {
+    "qty": 30,
+    "unit": "g"
+  },
+  "cardamom": {
+    "qty": 10,
+    "unit": "g"
+  },
+  "bay leaf": {
+    "count": 6
+  },
+  "clove": {
+    "qty": 5,
+    "unit": "g"
+  },
+  "cinnamon": {
+    "qty": 10,
+    "unit": "g"
+  },
+  "black pepper": {
+    "qty": 20,
+    "unit": "g"
+  },
+  "cashew nuts": {
+    "qty": 100,
+    "unit": "g"
+  },
+  "coconut milk": {
+    "qty": 400,
+    "unit": "ml"
+  },
+  "soy sauce": {
+    "qty": 100,
+    "unit": "ml"
+  },
+  "vinegar": {
+    "qty": 60,
+    "unit": "ml"
+  },
+  "tomato paste": {
+    "qty": 100,
+    "unit": "g"
+  }
 }

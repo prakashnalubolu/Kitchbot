@@ -1,3 +1,5 @@
+(This projet is currenly in progress, The README you are seeing is old, will update once the project is done. - 04/19/2026)
+
 # 🍳 Kitchbot 
 ## An Agentic Chatbot built to help you manage your pantry, Solve cuisine related queries, helps in meal prep.
 

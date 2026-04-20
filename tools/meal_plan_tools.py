@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 
 from langchain_core.tools import tool
-from langchain.memory import SimpleMemory
 from tools.cuisine_tools import _load as _load_recipes
 from tools.textnorm import canonical_key as _canon, canonical_and_unit as _canon_and_unit
 from tools import pantry_tools as _pt
@@ -12,30 +11,60 @@ from tools.pantry_tools import get_pantry_items as _get_pantry_items
 from tools.manager_tools import _is_universal, _count_to_g, _g_to_count, _ml_to_g, _g_to_ml
 
 
+##############################################################################
+# Shared memory object – plain dict wrapper, no langchain dependency
+##############################################################################
+class _Store:
+    def __init__(self): self.memories: dict = {}
 
-##############################################################################
-# Shared memory object – survives for the life of the Streamlit session
-##############################################################################
-memory: SimpleMemory = SimpleMemory(memories={})  # injected into agent via import
+memory = _Store()
 
 # Where we persist finished plans ------------------------------------------------
-ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-PLAN_DIR = os.path.join(ROOT_DIR, "plans")
+ROOT_DIR      = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+PLAN_DIR      = os.path.join(ROOT_DIR, "plans")
+CURRENT_PLAN_PATH = os.path.join(ROOT_DIR, "data", "current_plan.json")
 os.makedirs(PLAN_DIR, exist_ok=True)
+
+# ---------------- Plan persistence ----------------------------------------
+
+def _persist_plan() -> None:
+    """Auto-save current plan+constraints to data/current_plan.json on every change."""
+    try:
+        data = {
+            "plan":        memory.memories.get("plan", {}),
+            "constraints": memory.memories.get("constraints", {}),
+        }
+        with open(CURRENT_PLAN_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def load_persisted_plan() -> None:
+    """Load plan + constraints from disk into memory on startup."""
+    try:
+        with open(CURRENT_PLAN_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("plan"):
+            memory.memories["plan"] = data["plan"]
+        if data.get("constraints"):
+            memory.memories["constraints"] = data["constraints"]
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
 
 # ---------------- Constraints (single source of truth) ----------------
 DEFAULT_CONSTRAINTS = {
     # mode: "pantry-preferred" | "pantry-first-strict" | "freeform"
-    #   pantry-preferred  — fill from pantry first; freeform fallback for gaps + shopping list
-    #   pantry-first-strict — 100% pantry only; leave slot blank if pantry can't cover it
-    #   freeform          — any eligible recipe; full shopping list generated
     "mode": "pantry-preferred",
     "allow_repeats": True,
     "cuisine": None,
     "diet": None,            # "veg" | "eggtarian" | "non-veg" | None
     "max_time": None,        # int minutes or None
-    "strict_meal_types": False,  # False = any recipe in any slot; True = breakfast-tagged only at breakfast
+    "strict_meal_types": False,
     "allow_subs": False,
+    "household_size": 1,     # number of people — scales shopping list quantities
+    "avoid_recent_days": 7,  # skip dishes cooked within last N days
 }
 
 
@@ -80,6 +109,16 @@ def _normalize_constraints(upd: Dict[str, Any]) -> Dict[str, Any]:
             c["max_time"] = None
     if "sub_policy" in upd:
         c["sub_policy"] = str(upd["sub_policy"]).strip().lower() or "100%-coverage"
+    if "household_size" in upd:
+        try:
+            c["household_size"] = max(1, int(upd["household_size"]))
+        except Exception:
+            pass
+    if "avoid_recent_days" in upd:
+        try:
+            c["avoid_recent_days"] = max(0, int(upd["avoid_recent_days"]))
+        except Exception:
+            pass
     memory.memories["constraints"] = c
     return c
 
@@ -103,11 +142,15 @@ def set_constraints(
     max_time: Optional[int] = None,
     strict_meal_types: bool = False,
     allow_subs: bool = False,
+    household_size: int = 1,
+    avoid_recent_days: int = 7,
 ) -> str:
     """
     Update planning constraints.
     mode: 'pantry-preferred' | 'pantry-first-strict' | 'freeform'
-    strict_meal_types: if True, only breakfast-tagged recipes appear in the Breakfast slot.
+    household_size: number of people — scales shopping list quantities.
+    avoid_recent_days: skip dishes cooked within the last N days (0 = disable).
+    strict_meal_types: if True, only breakfast-tagged recipes appear in Breakfast slot.
     """
     c = _normalize_constraints({
         "mode": mode,
@@ -117,6 +160,8 @@ def set_constraints(
         "max_time": max_time,
         "strict_meal_types": strict_meal_types,
         "allow_subs": allow_subs,
+        "household_size": household_size,
+        "avoid_recent_days": avoid_recent_days,
     })
     label = _MODE_LABELS.get(c["mode"], c["mode"])
     parts = [f"OK. Mode: {label}"]
@@ -126,6 +171,9 @@ def set_constraints(
         parts.append(f"max time: {c['max_time']} min")
     if c["strict_meal_types"]:
         parts.append("strict meal types: on")
+    hs = c.get("household_size", 1)
+    if hs > 1:
+        parts.append(f"household: {hs} people")
     return ", ".join(parts) + "."
 
 def _canon_name_unit(item: str, unit: str) -> tuple[str, str]:
@@ -330,6 +378,29 @@ def auto_plan(
     plan: Dict[str, Dict[str, str]] = memory.memories.get("plan", {}) if cont else {}
     memory.memories["plan"] = plan  # ensure it exists
 
+    # Load recently cooked dishes to avoid repeating them
+    avoid_recent_days = int(c.get("avoid_recent_days", 7))
+    recently_cooked: set[str] = set()
+    if avoid_recent_days > 0:
+        try:
+            from tools.history_tools import recently_cooked_dishes
+            recently_cooked = set(recently_cooked_dishes(within_days=avoid_recent_days))
+        except Exception:
+            pass
+
+    # Load feedback to prefer liked dishes
+    liked_dishes: set[str] = set()
+    disliked_dishes: set[str] = set()
+    try:
+        from tools.history_tools import get_feedback_raw
+        for name, fb in get_feedback_raw().items():
+            if fb.get("thumbs_up", 0) > fb.get("thumbs_down", 0):
+                liked_dishes.add(name)
+            elif fb.get("thumbs_down", 0) > fb.get("thumbs_up", 0):
+                disliked_dishes.add(name)
+    except Exception:
+        pass
+
     # Build slot list to fill in order
     start_at = 1
     if cont and plan:
@@ -391,15 +462,28 @@ def auto_plan(
 
             no_consec = not c.get("allow_repeats", True)
 
-            if c["mode"] in ("pantry-first-strict", "pantry-preferred"):
-                once_list = _coverable_once_sorted(slot_candidates, shadow)
+            def _should_skip(name_l: str) -> bool:
+                """True if this dish should be skipped in Pass 1 (recently cooked or disliked)."""
+                return name_l in recently_cooked or name_l in disliked_dishes
 
-                # PASS 1 — unseen pantry dish
+            def _sort_by_preference(lst: list) -> list:
+                """Liked dishes first, then neutral, then disliked."""
+                return sorted(lst, key=lambda r: (
+                    (r.get("name") or "").lower() not in liked_dishes,
+                    (r.get("name") or "").lower() in disliked_dishes,
+                ))
+
+            if c["mode"] in ("pantry-first-strict", "pantry-preferred"):
+                once_list = _sort_by_preference(_coverable_once_sorted(slot_candidates, shadow))
+
+                # PASS 1 — unseen pantry dish, not recently cooked, not disliked
                 for r in once_list:
                     name_l = (r.get("name") or "").strip().lower()
                     if name_l in once_placed:
                         continue
                     if no_consec and name_l == prev_dish_lower:
+                        continue
+                    if _should_skip(name_l):
                         continue
                     pick        = r
                     pick_reason = "pantry"
@@ -407,7 +491,7 @@ def auto_plan(
                     once_placed.add(name_l)
                     break
 
-                # PASS 2 — fallback: any pantry dish even if already used (repeat allowed)
+                # PASS 2 — fallback: any pantry dish (ignore recent/disliked, allow repeats)
                 if pick is None:
                     for r in once_list:
                         name_l = (r.get("name") or "").strip().lower()
@@ -418,16 +502,19 @@ def auto_plan(
                         _apply_deduction_canon(pick, shadow)
                         break
 
-                # PASS 3 — freeform fallback (pantry-preferred only), prefer unseen
+                # PASS 3 — freeform fallback (pantry-preferred only), prefer unseen + liked
                 if pick is None and c["mode"] == "pantry-preferred":
-                    shuffled = list(slot_candidates)
+                    shuffled = _sort_by_preference(list(slot_candidates))
                     random.shuffle(shuffled)
-                    # prefer unseen first
+                    shuffled = _sort_by_preference(shuffled)
+                    # prefer unseen + not recently cooked first
                     for r in shuffled:
                         name_l = (r.get("name") or "").strip().lower()
                         if name_l in once_placed:
                             continue
                         if no_consec and name_l == prev_dish_lower:
+                            continue
+                        if _should_skip(name_l):
                             continue
                         pick        = r
                         pick_reason = "shopping"
@@ -491,6 +578,7 @@ def auto_plan(
     # All slots attempted — build summary
     memory.memories["plan"] = plan
     memory.memories["calc_log"] = calc_log
+    _persist_plan()
 
     lines = []
     for d in [f"Day{n}" for n in target_days]:
@@ -549,6 +637,7 @@ def update_plan(day: str, meal: str, recipe_name: str, reason: str = "") -> str:
         entry["reason"] = reason
     calc_log.append(entry)
     memory.memories["calc_log"] = calc_log
+    _persist_plan()
 
     return f"Set {day} » {meal} to {recipe_name}."
 
@@ -750,14 +839,25 @@ def _format_deficits(deficits: List[Dict[str, Any]]) -> str:
 
 @tool
 def get_shopping_list() -> str:
-    """Return a quantity-aware shopping list computed from the current plan."""
+    """Return a quantity-aware shopping list computed from the current plan, scaled by household size."""
     plan = memory.memories.get("plan", {})
     if not plan:
         return "No plan in memory."
     deficits = _quantity_shopping_deficits(plan)
-    # keep a copy in memory for UI (your sidebar reads this)
+
+    # Scale by household size
+    household_size = int(_get_constraints().get("household_size", 1))
+    if household_size > 1:
+        for d in deficits:
+            d["buy"]  = d["buy"]  * household_size
+            d["need"] = d["need"] * household_size
+
+    # keep a copy in memory for UI
     memory.memories["shopping_list"] = deficits
-    return _format_deficits(deficits)
+    result = _format_deficits(deficits)
+    if household_size > 1:
+        result = f"_(Quantities scaled for {household_size} people)_\n" + result
+    return result
 
 @tool
 def save_plan(file_name: Optional[str] = None) -> str:
@@ -873,6 +973,27 @@ def cook_meal(
         "missing": missing,
     })
     memory.memories["planner_log"] = log
+    _persist_plan()
+
+    # Log to persistent meal history
+    try:
+        from tools.history_tools import log_meal_to_history
+        hs = int(_get_constraints().get("household_size", 1))
+        ingredients_consumed = [
+            {"item": d.split(" ", 2)[2] if len(d.split(" ", 2)) > 2 else d,
+             "qty":  int(d.split(" ")[0]) if d.split(" ")[0].isdigit() else 0,
+             "unit": d.split(" ")[1] if len(d.split(" ")) > 1 else ""}
+            for d in deducted
+        ]
+        log_meal_to_history(
+            dish=dish,
+            day=day or "",
+            meal=meal or "",
+            ingredients_consumed=ingredients_consumed,
+            household_size=hs,
+        )
+    except Exception:
+        pass
 
     parts = [f"✅ Marked cooked: {dish.title()}."]
     if deducted:
@@ -881,4 +1002,8 @@ def cook_meal(
         parts.append("Still needed (not deducted): " + ", ".join(missing) + ".")
     if not deducted and not missing:
         parts.append("No ingredient lines were found in the recipe.")
+    parts.append("Rate it 👍 or 👎 to improve future suggestions!")
     return " ".join(parts)
+
+# Load persisted plan on module import (restores state after server restart)
+load_persisted_plan()
