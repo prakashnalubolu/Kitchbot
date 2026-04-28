@@ -1,30 +1,35 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { chatApi } from "@/lib/api";
-import { Send, Bot, User, Wrench } from "lucide-react";
+import { Send, Bot, User, Wrench, Trash2 } from "lucide-react";
 
 type Message = {
   role: "user" | "assistant";
   text: string;
   streaming?: boolean;
-  tools?: string[];   // tool names called during this response
+  tools?: string[];
+};
+
+const WELCOME: Message = {
+  role: "assistant",
+  text: "Hi! I'm KitchBot 🥘 I can help you plan meals, manage your pantry, find recipes, and track food waste. What would you like to do?",
 };
 
 function ToolBadge({ name }: { name: string }) {
   const label: Record<string, string> = {
-    list_pantry: "📦 Reading pantry",
-    add_to_pantry: "📦 Updating pantry",
-    remove_from_pantry: "📦 Updating pantry",
-    auto_plan: "📅 Planning meals",
-    get_shopping_list: "🛒 Building list",
-    cook_meal: "🍳 Marking cooked",
-    find_recipes_by_items: "🔍 Matching recipes",
-    get_recipe: "📖 Fetching recipe",
-    missing_ingredients: "🔍 Checking ingredients",
-    rate_recipe: "⭐ Saving rating",
-    get_expiring_soon: "⏰ Checking expiry",
-    get_impact_stats: "🌱 Loading impact",
-    suggest_variety: "🎲 Finding variety",
+    list_pantry:          "📦 Reading pantry",
+    add_to_pantry:        "📦 Updating pantry",
+    remove_from_pantry:   "📦 Updating pantry",
+    auto_plan:            "📅 Planning meals",
+    get_shopping_list:    "🛒 Building list",
+    cook_meal:            "🍳 Marking cooked",
+    find_recipes_by_items:"🔍 Matching recipes",
+    get_recipe:           "📖 Fetching recipe",
+    missing_ingredients:  "🔍 Checking ingredients",
+    rate_recipe:          "⭐ Saving rating",
+    get_expiring_soon:    "⏰ Checking expiry",
+    get_impact_stats:     "🌱 Loading impact",
+    suggest_variety:      "🎲 Finding variety",
   };
   return (
     <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
@@ -35,12 +40,9 @@ function ToolBadge({ name }: { name: string }) {
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([{
-    role: "assistant",
-    text: "Hi! I'm KitchBot 🥘 I can help you plan meals, manage your pantry, find recipes, and track food waste. What would you like to do?",
-  }]);
-  const [input, setInput]     = useState("");
-  const [sending, setSending] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [input, setInput]       = useState("");
+  const [sending, setSending]   = useState(false);
   const [activeTools, setActiveTools] = useState<string[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const wsRef     = useRef<WebSocket | null>(null);
@@ -52,6 +54,14 @@ export default function ChatPage() {
   useEffect(() => {
     return () => { wsRef.current?.close(); };
   }, []);
+
+  const clearChat = () => {
+    wsRef.current?.close();
+    setMessages([WELCOME]);
+    setActiveTools([]);
+    setInput("");
+    setSending(false);
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -121,7 +131,6 @@ export default function ChatPage() {
 
         ws.onerror = async () => {
           ws.close();
-          // HTTP fallback
           try {
             const res = await chatApi.send(text);
             setMessages(prev => [...prev, { role: "assistant", text: res.result }]);
@@ -142,7 +151,15 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
-      <h1 className="text-xl font-bold text-gray-900 mb-4">Chat</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold text-gray-900">Chat</h1>
+        <button
+          onClick={clearChat}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+          title="Clear conversation">
+          <Trash2 size={13} /> Clear chat
+        </button>
+      </div>
 
       <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-1">
         {messages.map((m, i) => (
@@ -170,7 +187,6 @@ export default function ChatPage() {
           </div>
         ))}
 
-        {/* Active tool indicators */}
         {activeTools.length > 0 && (
           <div className="flex gap-1.5 flex-wrap pl-9">
             {[...new Set(activeTools)].map(t => (

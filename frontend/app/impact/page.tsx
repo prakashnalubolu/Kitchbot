@@ -63,7 +63,10 @@ export default function ImpactPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-gray-900">Food Waste Impact</h1>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Sustainability</h1>
+          <p className="text-xs text-gray-500 mt-0.5">Your food waste reduction stats and expiring items</p>
+        </div>
         <button onClick={load} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
           <RefreshCw size={16} />
         </button>

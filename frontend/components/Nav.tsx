@@ -4,11 +4,11 @@ import { usePathname } from "next/navigation";
 import { ShoppingBasket, CalendarDays, MessageSquare, History, Leaf } from "lucide-react";
 
 const links = [
-  { href: "/",        label: "Pantry",    Icon: ShoppingBasket },
-  { href: "/plan",    label: "Meal Plan", Icon: CalendarDays },
-  { href: "/chat",    label: "Chat",      Icon: MessageSquare },
-  { href: "/history", label: "History",   Icon: History },
-  { href: "/impact",  label: "Impact",    Icon: Leaf },
+  { href: "/",        label: "Pantry",        Icon: ShoppingBasket },
+  { href: "/plan",    label: "Meal Plan",     Icon: CalendarDays },
+  { href: "/chat",    label: "Chat",          Icon: MessageSquare },
+  { href: "/history", label: "Cook Log",      Icon: History },
+  { href: "/impact",  label: "Sustainability", Icon: Leaf },
 ];
 
 export default function Nav() {

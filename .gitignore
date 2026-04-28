@@ -93,3 +93,9 @@ Thumbs.db
 # Ignore all agent and tool cache
 agents/__pycache__/
 tools/__pycache__/
+
+# Claude Code local settings
+.claude/
+
+# Runtime plan data
+plans/
